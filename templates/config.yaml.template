@@ -1,0 +1,62 @@
+# Clyde Configuration
+version: 1.0
+
+# Project metadata
+project:
+  name: "{{ project_name }}"
+  type: "{{ project_type }}"  # api, web, cli, library
+  language: "{{ language }}"  # python, javascript, typescript
+  framework: "{{ framework }}" # fastapi, react, nextjs, etc.
+
+# Module inclusions
+includes:
+  # Core principles (recommended for all projects)
+  - core.tdd
+  - core.modularity
+  - core.dry
+  - core.general
+  
+  # Language-specific modules
+{% if language == "python" %}
+  - python.general
+  - python.testing
+{% elif language == "javascript" %}
+  - javascript.general
+  - javascript.testing
+{% endif %}
+  
+  # Framework-specific modules
+{% if framework == "fastapi" %}
+  - fastapi.structure
+  - fastapi.patterns
+{% elif framework == "react" %}
+  - react.structure
+  - react.patterns
+{% elif framework == "nextjs" %}
+  - nextjs.structure
+  - nextjs.patterns
+{% endif %}
+  
+  # Database modules (uncomment as needed)
+  # - postgres
+  # - mongodb
+  
+  # Tool modules (uncomment as needed)
+  # - docker
+  # - git
+
+# Custom module paths (for project-specific modules)
+custom_modules:
+  # - path: .clyde/custom/my-patterns.md
+  #   name: custom.my-patterns
+
+# Configuration options
+options:
+  # Include module boundaries in generated file
+  show_module_boundaries: true
+  
+  # Include table of contents
+  include_toc: true
+  
+  # Validation level (strict, normal, permissive)  
+  validation_level: "normal"

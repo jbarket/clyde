@@ -1,0 +1,17 @@
+README.md
+setup.py
+clyde.egg-info/PKG-INFO
+clyde.egg-info/SOURCES.txt
+clyde.egg-info/dependency_links.txt
+clyde.egg-info/entry_points.txt
+clyde.egg-info/requires.txt
+clyde.egg-info/top_level.txt
+src/__init__.py
+src/builder.py
+src/cli.py
+src/config.py
+src/sync.py
+tests/__init__.py
+tests/test_builder.py
+tests/test_cli.py
+tests/test_config.py

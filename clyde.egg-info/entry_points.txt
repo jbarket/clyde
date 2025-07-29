@@ -1,0 +1,2 @@
+[console_scripts]
+clyde = src.cli:cli
