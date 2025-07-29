@@ -93,6 +93,31 @@ class ClydeConfig:
         if module_id in self.includes:
             self.includes.remove(module_id)
     
+    def expand_groups(self, includes: List[str]) -> List[str]:
+        """Expand group references like 'core.*' into individual modules."""
+        expanded = []
+        modules_dir = self.get_modules_dir()
+        
+        for item in includes:
+            if item.endswith('.*'):
+                # This is a group reference
+                group_prefix = item[:-2]  # Remove '.*'
+                group_path = modules_dir / group_prefix
+                
+                if group_path.exists() and group_path.is_dir():
+                    # Find all .md files in this directory
+                    for module_file in group_path.glob('*.md'):
+                        module_name = module_file.stem
+                        module_id = f"{group_prefix}.{module_name}"
+                        expanded.append(module_id)
+                else:
+                    print(f"Warning: Group directory not found: {group_path}")
+            else:
+                # Regular module reference
+                expanded.append(item)
+        
+        return expanded
+    
     def get_modules_dir(self) -> Path:
         """Get the path to the modules directory."""
         # Assume modules are in the same directory as this file
@@ -115,7 +140,10 @@ class ClydeConfig:
         """Validate that all included modules exist. Returns list of missing modules."""
         missing = []
         
-        for module_id in self.includes:
+        # Expand groups first
+        expanded_includes = self.expand_groups(self.includes)
+        
+        for module_id in expanded_includes:
             module_path = self.get_module_path(module_id)
             if not module_path.exists():
                 missing.append(module_id)
@@ -228,7 +256,10 @@ class ModuleResolver:
         """Get content for all included modules."""
         content = {}
         
-        for module_id in self.config.includes:
+        # Expand any group references first
+        expanded_includes = self.config.expand_groups(self.config.includes)
+        
+        for module_id in expanded_includes:
             module_content = self.resolve_module(module_id)
             if module_content:
                 content[module_id] = module_content

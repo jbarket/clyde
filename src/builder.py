@@ -164,8 +164,9 @@ Document how to set up and run the development environment.
         if self.config.options.get("include_toc", True):
             content_parts.append(self._build_table_of_contents(module_content))
         
-        # Add module content
-        for module_id in self.config.includes:
+        # Add module content (use expanded includes for groups)
+        expanded_includes = self.config.expand_groups(self.config.includes)
+        for module_id in expanded_includes:
             if module_id in module_content:
                 content_parts.append(self._format_module_content(
                     module_id, 

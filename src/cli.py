@@ -157,8 +157,9 @@ def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, path: str):
 
 
 @cli.command('list-modules')
-def list_modules():
-    """Show available modules."""
+@click.option('--groups', is_flag=True, help='Show available groups instead of individual modules')
+def list_modules(groups: bool):
+    """Show available modules or groups."""
     
     # Get modules directory from package
     modules_dir = Path(__file__).parent.parent / 'modules'
@@ -167,31 +168,68 @@ def list_modules():
         click.echo("❌ Modules directory not found")
         sys.exit(1)
     
-    click.echo("📚 Available modules:")
-    
-    for category_dir in sorted(modules_dir.iterdir()):
-        if not category_dir.is_dir():
-            continue
-            
-        click.echo(f"\n{category_dir.name.title()}:")
+    if groups:
+        click.echo("📁 Available groups (use with .* suffix):")
+        click.echo("")
         
-        for module_file in sorted(category_dir.glob('**/*.md')):
-            # Convert path to module ID
-            relative_path = module_file.relative_to(modules_dir)
-            module_id = str(relative_path.with_suffix('')).replace('/', '.')
+        for category_dir in sorted(modules_dir.iterdir()):
+            if not category_dir.is_dir():
+                continue
             
-            # Get description from first line if available
-            try:
-                with open(module_file) as f:
-                    first_line = f.readline().strip()
-                    if first_line.startswith('#'):
-                        description = first_line[1:].strip()
-                    else:
-                        description = "No description available"
-            except:
-                description = "No description available"
+            # Count modules in this group
+            module_count = len(list(category_dir.glob('**/*.md')))
+            if module_count == 0:
+                continue
+                
+            click.echo(f"  {category_dir.name}.*")
+            click.echo(f"    📊 Contains {module_count} modules")
             
-            click.echo(f"  {module_id:<30} {description}")
+            # Show a few example modules
+            examples = []
+            for module_file in sorted(category_dir.glob('*.md'))[:3]:
+                relative_path = module_file.relative_to(modules_dir)
+                module_id = str(relative_path.with_suffix('')).replace('/', '.')
+                examples.append(module_id)
+            
+            if examples:
+                click.echo(f"    📝 Examples: {', '.join(examples)}")
+                if module_count > 3:
+                    click.echo(f"    📝 ... and {module_count - 3} more")
+            click.echo("")
+            
+        click.echo("💡 Usage examples:")
+        click.echo("  clyde sync --add core.*         # Add all core modules")
+        click.echo("  clyde sync --add patterns.*     # Add all pattern modules")
+        click.echo("  clyde sync --remove core.*      # Remove all core modules")
+        
+    else:
+        click.echo("📚 Available modules:")
+        
+        for category_dir in sorted(modules_dir.iterdir()):
+            if not category_dir.is_dir():
+                continue
+                
+            click.echo(f"\n{category_dir.name.title()}:")
+            
+            for module_file in sorted(category_dir.glob('**/*.md')):
+                # Convert path to module ID
+                relative_path = module_file.relative_to(modules_dir)
+                module_id = str(relative_path.with_suffix('')).replace('/', '.')
+                
+                # Get description from first line if available
+                try:
+                    with open(module_file) as f:
+                        first_line = f.readline().strip()
+                        if first_line.startswith('#'):
+                            description = first_line[1:].strip()
+                        else:
+                            description = "No description available"
+                except:
+                    description = "No description available"
+                
+                click.echo(f"  {module_id:<30} {description}")
+        
+        click.echo("\n💡 Tip: Use 'clyde list-modules --groups' to see available groups")
 
 
 @cli.command()

@@ -16,19 +16,8 @@ includes:
   - core.dry
   - core.general
   
-  # SuperClaude-inspired cognitive frameworks
-  - core.systematic-thinking
-  - core.cognitive-framework
-  - core.code-quality
-  - core.documentation-first
-  - core.error-handling
-  
-  # Development patterns
-  - patterns.problem-decomposition
-  - patterns.iterative-development
-  - patterns.verification
-  
   # Language-specific modules
+
   - python.general
   - python.testing
 
