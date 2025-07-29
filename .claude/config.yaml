@@ -31,7 +31,11 @@ includes:
   
   # Tool modules (uncomment as needed)
   # - docker
-  # - git
+  - tools.domain-separation
+  - tools.mcp-tools  
+  - tools.testing-strategy
+  - tools.ai-friendly-code
+  - tools.task-management
 
 # Custom module paths (for project-specific modules)
 custom_modules:
