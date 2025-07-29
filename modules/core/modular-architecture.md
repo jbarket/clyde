@@ -1,22 +1,36 @@
-# Domain Separation Principles
+# Modular Architecture
 
-## Core Philosophy
+## Core Principles
+
+### Single Responsibility
+- Each module should have one reason to change
+- Functions and classes should do one thing well
+- Separate concerns into distinct modules
+- Avoid god objects and utility classes
+
+### High Cohesion, Loose Coupling
+- Group related functionality together
+- Minimize dependencies between modules
+- Use interfaces to define contracts
+- Depend on abstractions, not concretions
+
+### DRY Principle Integration
+Every piece of knowledge must have a single, unambiguous, authoritative representation within a system:
+- Configuration should be centralized
+- Business rules should have one source of truth
+- Extract common code into reusable components
+- Use templates and code generation for repetitive patterns
+
+## Domain Separation
 
 ### Microservice-Inspired Module Design
-- Design modules with **clear domain boundaries** even within monolithic applications
-- Each module should have a **single, well-defined responsibility**
-- Modules should be **independently testable** and **loosely coupled**
-- Apply **separation of concerns** at the module level
+Apply **domain-driven design principles** at the module level:
+- **Clear domain boundaries** - Each module represents a distinct business domain
+- **Independent operation** - Modules should function independently without tight coupling
+- **Explicit interfaces** - All inter-module communication through defined contracts
+- **Domain-specific logic** - Business rules contained within appropriate domain modules
 
-### Module Independence
-- **No shared mutable state** between modules
-- **Explicit interfaces** for all inter-module communication
-- **Dependency injection** over tight coupling
-- **Event-driven communication** where appropriate
-
-## Domain Boundary Guidelines
-
-### Identify Domain Boundaries
+### Domain Boundary Guidelines
 ```
 // Good: Clear domain boundaries
 user/
@@ -50,11 +64,40 @@ product/
 └── formatters/currency.py # Domain-specific formatting
 ```
 
+## Module Organization
+
+### Directory Structure
+- Organize by feature, not by type
+- Use consistent naming conventions
+- Keep related files together
+- Separate concerns clearly
+
+```
+project/
+├── user/
+│   ├── __init__.py
+│   ├── models.py
+│   ├── services.py
+│   └── views.py
+├── product/
+│   ├── __init__.py
+│   ├── models.py
+│   └── services.py
+└── shared/
+    ├── utils.py
+    └── exceptions.py
+```
+
+### Import Management
+- Use explicit imports over wildcard imports
+- Import at the module level
+- Avoid circular imports
+- Group imports logically (standard, third-party, local)
+
 ## Interface Design
 
 ### Define Clear Contracts
 ```python
-# Good: Explicit interface definition
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
@@ -109,7 +152,118 @@ class UserService:
         return saved_user
 ```
 
-## Testing Independence
+## AI-Agent-Friendly Design
+
+### File and Function Sizing Guidelines
+```python
+# Optimal sizes for AI reasoning
+- **Functions**: 10-30 lines (readable in single view)
+- **Classes**: 50-150 lines (comprehensible as unit)
+- **Modules**: 200-500 lines (fits in context window)
+- **Files**: Maximum 800 lines (AI can process entirely)
+
+# When files exceed limits:
+# Split by responsibility, not by arbitrary line count
+```
+
+### Self-Explaining Code Structure
+```python
+# Good: Names that explain purpose and context
+def send_welcome_email_to_new_user(user: User, email_template: EmailTemplate) -> EmailResult:
+    pass
+
+def calculate_monthly_subscription_renewal_date(subscription: Subscription) -> datetime:
+    pass
+
+# Avoid: Abbreviated or unclear names
+def send_email(u, t):  # Unclear parameters
+    pass
+
+def calc_date(s):  # Abbreviated and unclear
+    pass
+```
+
+### Consistent Code Organization
+```python
+"""
+Module: user_service.py
+Purpose: User-related business logic and operations
+"""
+
+# 1. Imports (grouped logically)
+from typing import Optional, List
+from datetime import datetime
+from ..models import User
+from ..repositories import UserRepository
+
+# 2. Constants and configuration
+MAX_LOGIN_ATTEMPTS = 3
+PASSWORD_MIN_LENGTH = 8
+
+# 3. Data classes and types
+@dataclass
+class UserCreationRequest:
+    email: str
+    password: str
+    full_name: str
+
+# 4. Main class implementation
+class UserService:
+    """Service class for user-related operations."""
+    
+    def __init__(self, user_repository: UserRepository):
+        self._user_repository = user_repository
+    
+    # Public methods first
+    def create_user(self, request: UserCreationRequest) -> User:
+        """Create a new user account."""
+        self._validate_user_creation_request(request)
+        
+        user = User(
+            email=request.email,
+            password_hash=self._hash_password(request.password),
+            full_name=request.full_name,
+            created_at=datetime.utcnow()
+        )
+        
+        return self._user_repository.save(user)
+    
+    # Private methods last
+    def _validate_user_creation_request(self, request: UserCreationRequest) -> None:
+        """Validate user creation request data."""
+        if not self._is_valid_email(request.email):
+            raise ValidationError("Invalid email format")
+```
+
+## Design Patterns
+
+### Dependency Injection
+- Pass dependencies as parameters
+- Use dependency injection containers when appropriate
+- Make dependencies explicit and testable
+- Avoid hidden dependencies
+
+```python
+# Good: Explicit dependency injection
+class OrderService:
+    def __init__(self, payment_processor: PaymentProcessor, email_service: EmailService):
+        self._payment_processor = payment_processor
+        self._email_service = email_service
+```
+
+### Interface Segregation
+- Create focused interfaces
+- Clients shouldn't depend on methods they don't use
+- Use abstract base classes or protocols
+- Keep interfaces stable
+
+### Plugin Architecture
+- Design for extensibility
+- Use configuration-driven behavior
+- Support runtime module loading
+- Provide clear extension points
+
+## Independent Testability
 
 ### Module-Level Test Isolation
 ```python
@@ -136,26 +290,6 @@ class TestUserService:
         self.mock_event_bus.publish.assert_called_once()
 ```
 
-### Integration Test Boundaries
-```python
-# Integration tests focus on module boundaries
-class TestUserProductIntegration:
-    def test_user_creation_triggers_welcome_product_recommendations(self):
-        # Test the integration between user and product modules
-        user_service = UserService(real_user_repo, real_event_bus)
-        product_service = ProductService(real_product_repo, real_event_bus)
-        
-        # Subscribe product service to user events
-        real_event_bus.subscribe(UserCreatedEvent, product_service.handle_new_user)
-        
-        # Create user and verify product module responds
-        user = user_service.create_user({"name": "John", "email": "john@example.com"})
-        
-        # Verify cross-module integration
-        recommendations = product_service.get_welcome_recommendations(user.id)
-        assert len(recommendations) > 0
-```
-
 ## Configuration and Dependencies
 
 ### Module Configuration
@@ -166,16 +300,10 @@ class UserModuleConfig:
         self.password_min_length = int(os.getenv('USER_PASSWORD_MIN_LENGTH', '8'))
         self.session_timeout = int(os.getenv('USER_SESSION_TIMEOUT', '3600'))
         self.enable_2fa = os.getenv('USER_ENABLE_2FA', 'false').lower() == 'true'
-
-class ProductModuleConfig:
-    def __init__(self):
-        self.max_products_per_page = int(os.getenv('PRODUCT_MAX_PER_PAGE', '20'))
-        self.enable_inventory_tracking = os.getenv('PRODUCT_INVENTORY', 'true').lower() == 'true'
 ```
 
 ### Dependency Injection Container
 ```python
-# Use DI container to manage module dependencies
 class DIContainer:
     def __init__(self):
         self._services = {}
@@ -189,35 +317,40 @@ class DIContainer:
 # Module registration
 def configure_user_module(container: DIContainer):
     container.register(UserRepository, SQLUserRepository())
-    container.register(PasswordHasher, BCryptHasher())
     container.register(UserService, UserService(
         container.get(UserRepository),
-        container.get(EventBus)
-    ))
-
-def configure_product_module(container: DIContainer):
-    container.register(ProductRepository, SQLProductRepository())
-    container.register(ProductService, ProductService(
-        container.get(ProductRepository),
         container.get(EventBus)
     ))
 ```
 
 ## Best Practices
 
+### Module Boundaries
+- Define clear public APIs
+- Hide implementation details
+- Use semantic versioning for breaking changes
+- Document module contracts
+
+### Error Handling
+- Handle errors at appropriate boundaries
+- Use custom exceptions for domain errors
+- Log errors with sufficient context
+- Fail fast for configuration errors
+
 ### Module Design Checklist
 ```bash
 □ Single responsibility - module has one reason to change
-□ Clear boundaries - explicit interfaces and contracts  
+□ Clear boundaries - explicit interfaces and contracts
 □ Independent testing - can be tested without other modules
 □ Minimal coupling - depends only on necessary abstractions
 □ Explicit dependencies - all dependencies are injected
 □ Domain-specific - utilities and helpers are module-specific
 □ Event-driven communication - loose coupling between modules
-□ Configuration isolation - module manages its own config
+□ AI-friendly sizing - files and functions within optimal ranges
 ```
 
-### Anti-Patterns to Avoid
+## Anti-Patterns to Avoid
+
 - **God modules** that handle multiple domains
 - **Shared mutable state** between modules
 - **Circular dependencies** between modules
@@ -226,14 +359,6 @@ def configure_product_module(container: DIContainer):
 - **Cross-module database queries** that bypass interfaces
 - **Shared utility classes** that create hidden dependencies
 
-### Refactoring to Domain Separation
-1. **Identify domains** - map business capabilities to modules
-2. **Extract interfaces** - define contracts between modules
-3. **Remove direct dependencies** - introduce abstraction layers
-4. **Implement event communication** - replace direct calls with events
-5. **Isolate configuration** - move module-specific config to modules
-6. **Add integration tests** - verify module boundaries work correctly
-
 ## Benefits
 
 ### Development Benefits
@@ -241,8 +366,9 @@ def configure_product_module(container: DIContainer):
 - **Easier reasoning** - smaller, focused codebases per module
 - **Reduced merge conflicts** - changes isolated to specific modules
 - **Better testing** - isolated unit tests and focused integration tests
+- **AI collaboration** - modules sized for AI context windows
 
-### Maintenance Benefits  
+### Maintenance Benefits
 - **Easier debugging** - issues confined to specific domains
 - **Safer refactoring** - changes contained within module boundaries
 - **Incremental upgrades** - modules can evolve independently

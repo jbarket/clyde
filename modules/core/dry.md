@@ -54,10 +54,20 @@ def process_user_email(email):
 ```
 
 ### Configuration Centralization
-- Use configuration files for environment settings
-- Create constants modules for magic numbers
-- Centralize feature flags
-- Use dependency injection for configuration
+```python
+# Good: Centralized configuration
+class AppConfig:
+    def __init__(self):
+        self.database_url = os.getenv('DATABASE_URL')
+        self.api_key = os.getenv('API_KEY')
+        self.debug_mode = os.getenv('DEBUG', 'false').lower() == 'true'
+
+# Good: Constants module
+class ValidationConstants:
+    MIN_PASSWORD_LENGTH = 8
+    MAX_USERNAME_LENGTH = 50
+    EMAIL_REGEX_PATTERN = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+```
 
 ### Template and Code Generation
 - Use templates for repetitive code patterns
@@ -99,3 +109,11 @@ def process_user_email(email):
 - Creating leaky abstractions
 - Coupling unrelated functionality
 - Making abstractions too specific or too general
+
+## Integration with Modular Architecture
+
+DRY principles work hand-in-hand with modular design:
+- Extract common code within module boundaries
+- Share constants and configuration appropriately
+- Avoid cross-module duplication through clear interfaces
+- Balance DRY with module independence (see modular-architecture.md)

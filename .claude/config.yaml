@@ -11,8 +11,8 @@ project:
 # Module inclusions
 includes:
   # Core principles (recommended for all projects)
-  - core.tdd
-  - core.modularity
+  - core.development-standards
+  - core.modular-architecture
   - core.dry
   - core.general
   
@@ -31,11 +31,8 @@ includes:
   
   # Tool modules (uncomment as needed)
   # - docker
-  - tools.domain-separation
-  - tools.mcp-tools  
-  - tools.testing-strategy
-  - tools.ai-friendly-code
-  - tools.task-management
+  - tools.development-workflow
+  - tools.mcp-tools
 
 # Custom module paths (for project-specific modules)
 custom_modules:
