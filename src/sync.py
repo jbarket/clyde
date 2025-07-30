@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .config import ClydeConfig
 from .builder import ConfigBuilder, ConfigValidator
+from . import __version__
 
 
 class SyncManager:
@@ -134,7 +135,7 @@ class SyncManager:
         metadata = {
             "last_sync": datetime.now().isoformat(),
             "config_hash": self.config.get_config_hash(),
-            "clyde_version": "1.0.0",
+            "clyde_version": __version__,
             "module_count": len(self.config.includes)
         }
         

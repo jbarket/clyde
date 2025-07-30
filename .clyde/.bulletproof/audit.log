@@ -1,0 +1,3 @@
+{"timestamp": "2025-07-30T16:14:14.878437", "event": "SYNC_START", "operation_id": "20250730_161414_8", "data": {"target": null, "force": true}}
+{"timestamp": "2025-07-30T16:14:14.881717", "event": "SNAPSHOT_CREATED", "operation_id": "20250730_161414_8", "data": {"snapshot_id": "pre_sync_20250730_161414_8", "files_count": 6}}
+{"timestamp": "2025-07-30T16:14:14.890865", "event": "SYNC_SUCCESS", "operation_id": "20250730_161414_8", "data": {"target": null, "snapshot_id": "pre_sync_20250730_161414_8", "changes": ["Update .clyde/generated-claude.md", "Fix 1 configuration issues"]}}

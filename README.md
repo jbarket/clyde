@@ -4,6 +4,7 @@ Clyde is a powerful tool that standardizes how Claude AI approaches software dev
 
 ## 🚀 Core Features
 
+- **Smart Project Detection**: Automatically detects existing codebases (FastAPI, Next.js, React, etc.)
 - **Unified Development Standards**: Consistent coding principles across all projects
 - **Token-Optimized**: 74% reduction in configuration size while preserving essential guidance
 - **MCP Server Management**: Easy installation and configuration of MCP servers
@@ -30,14 +31,20 @@ clyde --version
 ### Initialize a New Project
 
 ```bash
-# Interactive setup
+# Smart initialization (auto-detects existing projects)
 clyde init
 
-# Quick setup with defaults
+# Analyze existing project without initializing
+clyde detect
+
+# Override auto-detection with manual settings
 clyde init --language python --framework fastapi
 
 # Initialize in specific directory
 clyde init /path/to/my-project
+
+# Skip auto-detection
+clyde init --no-auto-detect
 ```
 
 ### Sync Configuration
@@ -52,6 +59,66 @@ clyde sync --target gemini
 
 # Preview changes
 clyde sync --check
+```
+
+## 🤖 Smart Project Detection
+
+Clyde automatically detects existing codebases and suggests optimal configurations:
+
+### Supported Project Types
+
+- **Python**: FastAPI, Django, Flask, general Python projects
+- **JavaScript/TypeScript**: Next.js, React, Node.js applications
+- **Database Integration**: PostgreSQL, MongoDB, MySQL, Redis detection
+- **Containerization**: Docker and docker-compose awareness
+
+### Detection Process
+
+```bash
+cd existing-fastapi-project/
+clyde init
+
+# 🔍 Analyzing existing project...
+# ✨ Detected: python-fastapi
+# 📊 Confidence: 92.3%
+# 📋 Evidence:
+#    ✓ Required file: requirements.txt
+#    ✓ Required file: main.py
+#    ✓ Found 'from fastapi' in main.py
+#    ✓ Found dependency: fastapi
+#    ✓ Found directory: app/
+#
+# 🎯 Suggested configuration:
+#    Language: python
+#    Framework: fastapi
+#    Database: postgres
+#
+# 📚 Suggested modules (8):
+#    • core.development-standards
+#    • core.code-quality
+#    • python.general
+#    • frameworks.fastapi
+#    ... and 4 more
+#
+# 🤖 Suggested MCPs (3):
+#    • sequential-thinking
+#    • context7
+#    • taskmaster
+#
+# Use detected configuration? [Y/n]
+```
+
+### Manual Detection
+
+```bash
+# Analyze without initializing
+clyde detect
+
+# Detailed analysis with evidence
+clyde detect --detailed
+
+# Analyze specific directory
+clyde detect /path/to/project
 ```
 
 ## 📁 Project Structure
@@ -233,8 +300,11 @@ mcp:
 
 ### Project Management
 ```bash
-# Initialize new project
+# Initialize new project (with auto-detection)
 clyde init [OPTIONS] [PATH]
+
+# Detect existing project type
+clyde detect [PATH]
 
 # Sync configuration files
 clyde sync [OPTIONS]

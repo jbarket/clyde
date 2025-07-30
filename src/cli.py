@@ -9,15 +9,18 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional, List
+from datetime import datetime
 
 from .config import ClydeConfig
 from .builder import ConfigBuilder
 from .sync import SyncManager
 from .mcp import MCPManager, MCPRegistry
+from .detector import ProjectDetector
+from .bulletproof_sync import BulletproofSyncManager
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="clyde")
+@click.version_option(version="2.0.0", prog_name="clyde")
 @click.pass_context
 def cli(ctx):
     """Clyde - Development Environment Configuration System
@@ -36,9 +39,11 @@ def cli(ctx):
               help='Database system')
 @click.option('--template', help='Predefined template (fastapi-react, etc.)')
 @click.option('--name', help='Project name')
+@click.option('--auto-detect/--no-auto-detect', default=True, 
+              help='Automatically detect project type from existing files')
 @click.argument('path', type=click.Path(), default='.')
 def init(language: Optional[str], framework: Optional[str], database: Optional[str], 
-         template: Optional[str], name: Optional[str], path: str):
+         template: Optional[str], name: Optional[str], auto_detect: bool, path: str):
     """Initialize a new clyde project in the specified directory."""
     
     project_path = Path(path).resolve()
@@ -59,6 +64,55 @@ def init(language: Optional[str], framework: Optional[str], database: Optional[s
     if template:
         language, framework = _parse_template(template)
     
+    # Auto-detect project if no explicit settings provided and auto-detect enabled
+    detected_result = None
+    if auto_detect and not language and not framework and not database:
+        click.echo("🔍 Analyzing existing project...")
+        detector = ProjectDetector()
+        detected_result = detector.get_best_match(project_path)
+        
+        if detected_result and detected_result.confidence > 0.6:
+            click.echo(f"✨ Detected: {detected_result.project_type.value}")
+            click.echo(f"📊 Confidence: {detected_result.confidence:.1%}")
+            click.echo(f"📋 Evidence:")
+            for evidence in detected_result.evidence[:5]:  # Show top 5 evidence items
+                click.echo(f"   {evidence}")
+            if len(detected_result.evidence) > 5:
+                click.echo(f"   ... and {len(detected_result.evidence) - 5} more")
+            click.echo()
+            
+            # Suggest configuration based on detection
+            suggested_language = detected_result.language
+            suggested_framework = detected_result.framework
+            suggested_database = detected_result.database
+            
+            click.echo("🎯 Suggested configuration:")
+            if suggested_language:
+                click.echo(f"   Language: {suggested_language}")
+            if suggested_framework:
+                click.echo(f"   Framework: {suggested_framework}")
+            if suggested_database:
+                click.echo(f"   Database: {suggested_database}")
+            
+            click.echo(f"📚 Suggested modules ({len(detected_result.suggested_modules)}):")
+            for module in detected_result.suggested_modules:
+                click.echo(f"   • {module}")
+            
+            click.echo(f"🤖 Suggested MCPs ({len(detected_result.suggested_mcps)}):")
+            for mcp in detected_result.suggested_mcps:
+                click.echo(f"   • {mcp}")
+            
+            click.echo()
+            if click.confirm("Use detected configuration?"):
+                language = suggested_language
+                framework = suggested_framework
+                database = suggested_database
+            else:
+                click.echo("Manual configuration selected.")
+        else:
+            click.echo("🤷 Could not reliably detect project type. Using manual configuration.")
+    
+    # Fallback to manual input if not detected or user declined
     if not language:
         language = click.prompt('Primary language', 
                               type=click.Choice(['python', 'javascript', 'typescript']))
@@ -76,6 +130,21 @@ def init(language: Optional[str], framework: Optional[str], database: Optional[s
         database=database,
         project_path=project_path
     )
+    
+    # Add detected modules and MCPs if available
+    if detected_result and detected_result.confidence > 0.6:
+        # Add suggested modules to config
+        for module in detected_result.suggested_modules:
+            config.add_module(module)
+        
+        # Add suggested MCPs to config
+        mcp_category = 'development'  # Default category
+        if mcp_category not in config.mcps:
+            config.mcps[mcp_category] = []
+        
+        for mcp in detected_result.suggested_mcps:
+            if mcp not in config.mcps[mcp_category]:
+                config.mcps[mcp_category].append(mcp)
     
     builder = ConfigBuilder(config)
     
@@ -103,9 +172,12 @@ def init(language: Optional[str], framework: Optional[str], database: Optional[s
 @click.option('--remove', multiple=True, help='Remove module(s) from configuration')
 @click.option('--check', is_flag=True, help='Show what would change without applying')
 @click.option('--all', 'sync_all', is_flag=True, help='Sync all projects in subdirectories')
+@click.option('--target', help='Sync specific target (claude, gemini)')
+@click.option('--force', is_flag=True, help='Skip validation errors and force sync')
+@click.option('--unsafe', is_flag=True, help='Use legacy sync without bulletproof features')
 @click.argument('path', type=click.Path(exists=True), default='.')
-def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, path: str):
-    """Sync configuration files (rebuild generated.md from current config)."""
+def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, target: str, force: bool, unsafe: bool, path: str):
+    """Sync configuration files with bulletproof safety features."""
     
     if sync_all:
         _sync_all_projects(Path(path), check)
@@ -134,10 +206,10 @@ def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, path: str):
                 if not check:
                     click.echo(f"➖ Removed module: {module}")
         
-        sync_manager = SyncManager(config)
-        
         if check:
-            changes = sync_manager.preview_changes()
+            # Use preview mode for check
+            sync_manager = SyncManager(config)
+            changes = sync_manager.preview_changes(target)
             if changes:
                 click.echo("📋 Would make the following changes:")
                 for change in changes:
@@ -149,8 +221,44 @@ def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, path: str):
             if add or remove:
                 config.save()
             
-            sync_manager.sync()
-            click.echo("✅ Configuration synced successfully")
+            if unsafe:
+                # Use legacy sync
+                click.echo("⚠️  Using legacy sync (unsafe mode)")
+                sync_manager = SyncManager(config)
+                sync_manager.sync(target)
+                click.echo("✅ Configuration synced successfully (legacy mode)")
+            else:
+                # Use bulletproof sync
+                bulletproof_manager = BulletproofSyncManager(config)
+                result = bulletproof_manager.bulletproof_sync(target, force)
+                
+                if result.success:
+                    click.echo("✅ Configuration synced successfully with bulletproof protection")
+                    if result.snapshot_id:
+                        click.echo(f"📦 Backup snapshot created: {result.snapshot_id}")
+                    if result.changes_made:
+                        click.echo(f"📝 Changes made:")
+                        for change in result.changes_made:
+                            click.echo(f"  • {change}")
+                    if result.issues:
+                        warnings = [issue for issue in result.issues if issue.severity == "warning"]
+                        if warnings:
+                            click.echo("⚠️  Warnings:")
+                            for warning in warnings:
+                                click.echo(f"  • {warning.message}")
+                else:
+                    click.echo(f"❌ Sync failed: {result.message}")
+                    if result.issues:
+                        errors = [issue for issue in result.issues if issue.severity == "error"]
+                        if errors:
+                            click.echo("🚨 Errors found:")
+                            for error in errors:
+                                click.echo(f"  • {error.message}")
+                                if error.suggestion:
+                                    click.echo(f"    💡 {error.suggestion}")
+                    if result.rollback_available:
+                        click.echo(f"🔄 Automatic rollback completed")
+                    sys.exit(1)
             
     except Exception as e:
         click.echo(f"❌ Error during sync: {e}", err=True)
@@ -233,6 +341,67 @@ def list_modules(groups: bool):
         click.echo("\n💡 Tip: Use 'clyde list-modules --groups' to see available groups")
 
 
+@cli.command('detect')
+@click.option('--detailed', is_flag=True, help='Show detailed detection analysis')
+@click.argument('path', type=click.Path(exists=True), default='.')
+def detect_project(detailed: bool, path: str):
+    """Detect project type from existing files."""
+    
+    project_path = Path(path).resolve()
+    click.echo(f"🔍 Analyzing project: {project_path}")
+    
+    detector = ProjectDetector()
+    results = detector.detect_project(project_path)
+    
+    if not results:
+        click.echo("❌ No project type detected")
+        return
+    
+    click.echo(f"\n📊 Detection Results ({len(results)} matches):")
+    click.echo("=" * 50)
+    
+    for i, result in enumerate(results[:3], 1):  # Show top 3 results
+        confidence_color = "green" if result.confidence > 0.8 else "yellow" if result.confidence > 0.6 else "red"
+        
+        click.echo(f"\n{i}. {result.project_type.value}")
+        click.secho(f"   Confidence: {result.confidence:.1%}", fg=confidence_color)
+        
+        if result.language:
+            click.echo(f"   Language: {result.language}")
+        if result.framework:
+            click.echo(f"   Framework: {result.framework}")
+        if result.database:
+            click.echo(f"   Database: {result.database}")
+        
+        if detailed:
+            click.echo(f"   Evidence ({len(result.evidence)}):")
+            for evidence in result.evidence:
+                color = "green" if evidence.startswith("✓") else "red"
+                click.secho(f"     {evidence}", fg=color)
+        
+        click.echo(f"   Suggested modules ({len(result.suggested_modules)}):")
+        for module in result.suggested_modules:
+            click.echo(f"     • {module}")
+        
+        click.echo(f"   Suggested MCPs ({len(result.suggested_mcps)}):")
+        for mcp in result.suggested_mcps:
+            click.echo(f"     • {mcp}")
+    
+    if len(results) > 3:
+        click.echo(f"\n... and {len(results) - 3} more matches")
+    
+    # Show initialization suggestion
+    best_result = results[0]
+    if best_result.confidence > 0.6:
+        click.echo(f"\n💡 To initialize with detected settings:")
+        lang_opt = f"--language {best_result.language}" if best_result.language else ""
+        framework_opt = f"--framework {best_result.framework}" if best_result.framework else ""
+        db_opt = f"--database {best_result.database}" if best_result.database else ""
+        
+        opts = " ".join(filter(None, [lang_opt, framework_opt, db_opt]))
+        click.echo(f"   clyde init {opts}")
+
+
 @cli.command()
 @click.argument('module_id')
 def show(module_id: str):
@@ -249,6 +418,144 @@ def show(module_id: str):
         content = f.read()
     
     click.echo_via_pager(content)
+
+
+@cli.command('snapshots')
+@click.option('--list', 'list_snapshots', is_flag=True, help='List available snapshots')
+@click.option('--rollback', help='Rollback to specific snapshot ID')
+@click.option('--cleanup', is_flag=True, help='Clean up old snapshots')
+@click.option('--keep', default=10, help='Number of snapshots to keep during cleanup')
+@click.argument('path', type=click.Path(exists=True), default='.')
+def snapshots(list_snapshots: bool, rollback: str, cleanup: bool, keep: int, path: str):
+    """Manage bulletproof sync snapshots."""
+    
+    config_path = Path(path).resolve()
+    
+    if not _find_config_file(config_path):
+        click.echo(f"❌ No clyde configuration found in {path}")
+        click.echo("💡 Run 'clyde init' to initialize a new project")
+        sys.exit(1)
+    
+    try:
+        config = ClydeConfig.from_file(config_path / '.clyde' / 'config.yaml')
+        bulletproof_manager = BulletproofSyncManager(config)
+        
+        if list_snapshots:
+            snapshots_list = bulletproof_manager.list_snapshots()
+            if not snapshots_list:
+                click.echo("📦 No snapshots found")
+                return
+            
+            click.echo(f"📦 Available snapshots ({len(snapshots_list)}):")
+            click.echo()
+            for snapshot in snapshots_list:
+                timestamp = datetime.fromisoformat(snapshot["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                click.echo(f"  🗂️  {snapshot['id']}")
+                click.echo(f"      📅 {timestamp}")
+                click.echo(f"      🔧 Operation: {snapshot['operation']}")
+                click.echo(f"      📄 Files: {snapshot['files_count']}")
+                click.echo(f"      🔍 Config hash: {snapshot['config_hash'][:12]}...")
+                click.echo()
+        
+        elif rollback:
+            click.echo(f"🔄 Rolling back to snapshot: {rollback}")
+            result = bulletproof_manager._rollback_to_snapshot(rollback)
+            
+            if result.success:
+                click.echo("✅ Rollback completed successfully")
+                if result.changes_made:
+                    click.echo("📝 Files restored:")
+                    for file_path in result.changes_made:
+                        click.echo(f"  • {file_path}")
+            else:
+                click.echo(f"❌ Rollback failed: {result.message}")
+                sys.exit(1)
+        
+        elif cleanup:
+            click.echo(f"🧹 Cleaning up old snapshots (keeping {keep} most recent)...")
+            cleanup_result = bulletproof_manager.cleanup_old_snapshots(keep)
+            
+            click.echo(f"✅ Cleanup completed:")
+            click.echo(f"  • Removed: {cleanup_result['removed']} snapshots")
+            click.echo(f"  • Kept: {cleanup_result['kept']} snapshots")
+            
+            if cleanup_result['errors']:
+                click.echo("⚠️  Errors during cleanup:")
+                for error in cleanup_result['errors']:
+                    click.echo(f"  • {error}")
+        
+        else:
+            # Default action: list snapshots
+            snapshots_list = bulletproof_manager.list_snapshots()
+            click.echo(f"📦 {len(snapshots_list)} snapshots available")
+            click.echo("💡 Use --list to see details, --rollback <id> to restore, --cleanup to clean up old snapshots")
+            
+    except Exception as e:
+        click.echo(f"❌ Error managing snapshots: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command('audit')
+@click.option('--limit', default=20, help='Number of recent entries to show')
+@click.argument('path', type=click.Path(exists=True), default='.')
+def audit(limit: int, path: str):
+    """Show bulletproof sync audit trail."""
+    
+    config_path = Path(path).resolve()
+    
+    if not _find_config_file(config_path):
+        click.echo(f"❌ No clyde configuration found in {path}")
+        click.echo("💡 Run 'clyde init' to initialize a new project")
+        sys.exit(1)
+    
+    try:
+        config = ClydeConfig.from_file(config_path / '.clyde' / 'config.yaml')
+        bulletproof_manager = BulletproofSyncManager(config)
+        
+        entries = bulletproof_manager.get_audit_trail(limit)
+        
+        if not entries:
+            click.echo("📋 No audit trail entries found")
+            return
+        
+        click.echo(f"📋 Audit trail (last {len(entries)} entries):")
+        click.echo()
+        
+        for entry in reversed(entries):  # Show newest first
+            timestamp = datetime.fromisoformat(entry["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            event = entry["event"]
+            op_id = entry["operation_id"]
+            
+            # Color code events
+            if "ERROR" in event:
+                color = "red"
+                icon = "🚨"
+            elif "SUCCESS" in event:
+                color = "green"
+                icon = "✅"
+            elif "START" in event:
+                color = "blue"
+                icon = "🔄"
+            else:
+                color = "yellow"
+                icon = "📝"
+            
+            click.secho(f"  {icon} [{timestamp}] {event} ({op_id})", fg=color)
+            
+            # Show relevant data
+            data = entry.get("data", {})
+            if data:
+                for key, value in list(data.items())[:3]:  # Show first 3 data items
+                    if isinstance(value, list) and len(value) > 3:
+                        value = f"[{len(value)} items]"
+                    elif isinstance(value, str) and len(value) > 50:
+                        value = value[:47] + "..."
+                    click.echo(f"      {key}: {value}")
+            click.echo()
+            
+    except Exception as e:
+        click.echo(f"❌ Error reading audit trail: {e}", err=True)
+        sys.exit(1)
 
 
 @cli.command('create-module')

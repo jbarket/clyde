@@ -1,0 +1,26 @@
+{
+  "timestamp": "2025-07-30T16:13:15.636920",
+  "config_hash": "ba8407b3",
+  "operation": "pre_sync",
+  "files": {
+    ".clyde/config.yaml": "308db6f046160c01e282b6acb91344f9502615c3d8269234a997889b7521e50b",
+    ".clyde/generated-claude.md": "c83a70f717a56e6922e75c81c1e763c707363fa89c379e4742ed60d5ee728b7c",
+    "claude.md": "227069cde93349b1d084a2105f1e9af006139e1d17836f72e2efa516cf78b330",
+    "gemini.md": "882f4981ae30f17cec5755e7327391c4fb79fc7dd3471773aa9c2d8695ea9811",
+    ".clyde/project-claude.md": "94623a50c18c5ae1f38292eaf15688fd21ee277628dc24143ae28d485cd38462",
+    ".clyde/architecture.md": "d3a11d6f8256dcdda54805611d92808829d40bdf6a5e09d04dafcba272f8262e"
+  },
+  "metadata": {
+    "operation_id": "20250730_161315_6",
+    "clyde_version": "1.0.0",
+    "config": {
+      "project_name": "clyde",
+      "language": "python",
+      "framework": "",
+      "targets": [
+        "claude"
+      ],
+      "module_count": 5
+    }
+  }
+}
