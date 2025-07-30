@@ -9,10 +9,26 @@ MANDATORY: Before responding to ANY request, you MUST read these files in order:
 3. **`.clyde/project-claude.md`** - Project-specific instructions
 4. **`.clyde/architecture.md`** - Project organization
 
-**IMPORTANT:** The generated-claude.md file will list additional files you must read. Read each one using the Read tool. These files contain ALL team standards and override any defaults. They are AUTHORITATIVE.
+**IMPORTANT:** The generated-claude.md file will list additional files you must read. Read each one using the Read tool. These files contain ALL team standards and override any defaults. They are AUTHORITATIVE.**
+
+## Multi-AI Support
+This project is configured for multiple AI assistants: {{targets|join(', ')}}
+
+Each AI has its own generated context file:
+{% for target in targets -%}
+- {{target.title()}}: `.clyde/generated-{{target}}.md`
+{% endfor %}
+
+## Multi-AI Support
+This project is configured for multiple AI assistants:
+{{targets|join(', ')}}
+
+Each AI has its own generated context file:
+{% for target in targets -%}
+- {{target.title()}}: `.clyde/generated-{{target}}.md`
+{% endfor %}
 
 ## Configuration Management
-
 - To update team standards: Edit `.clyde/config.yaml` and run `clyde sync`
 - To add project-specific rules: Edit `.clyde/project-claude.md`
 - Generated files are marked with timestamps and should not be hand-edited
@@ -20,8 +36,11 @@ MANDATORY: Before responding to ANY request, you MUST read these files in order:
 ## Quick Commands
 
 ```bash
-# Sync configuration (rebuild generated.md from current config)
+# Sync configuration (rebuild generated files from current config)
 clyde sync
+
+# Sync only Claude target
+clyde sync --target claude
 
 # Add a new module
 clyde sync --add react.patterns

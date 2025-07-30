@@ -13,6 +13,7 @@ from typing import Optional, List
 from .config import ClydeConfig
 from .builder import ConfigBuilder
 from .sync import SyncManager
+from .mcp import MCPManager, MCPRegistry
 
 
 @click.group()
@@ -41,7 +42,7 @@ def init(language: Optional[str], framework: Optional[str], database: Optional[s
     """Initialize a new clyde project in the specified directory."""
     
     project_path = Path(path).resolve()
-    config_dir = project_path / '.claude'
+    config_dir = project_path / '.clyde'
     
     if config_dir.exists():
         if not click.confirm(f"Configuration already exists in {path}. Overwrite?"):
@@ -89,7 +90,7 @@ def init(language: Optional[str], framework: Optional[str], database: Optional[s
         sync_manager.sync()
         
         click.echo(f"✅ Initialized clyde project in {path}")
-        click.echo(f"📝 Edit .claude/config.yaml to customize configuration")
+        click.echo(f"📝 Edit .clyde/config.yaml to customize configuration")
         click.echo(f"🔄 Run 'clyde sync' to regenerate configuration files")
         
     except Exception as e:
@@ -118,7 +119,7 @@ def sync(add: tuple, remove: tuple, check: bool, sync_all: bool, path: str):
         sys.exit(1)
     
     try:
-        config = ClydeConfig.from_file(config_path / '.claude' / 'config.yaml')
+        config = ClydeConfig.from_file(config_path / '.clyde' / 'config.yaml')
         
         # Apply module changes
         if add:
@@ -261,7 +262,7 @@ def create_module(module_id: str, template: Optional[str]):
         sys.exit(1)
     
     project_path = Path('.').resolve()
-    custom_dir = project_path / '.claude' / 'custom'
+    custom_dir = project_path / '.clyde' / 'custom'
     custom_dir.mkdir(parents=True, exist_ok=True)
     
     module_file = custom_dir / f"{module_id.split('.', 1)[1]}.md"
@@ -336,7 +337,7 @@ def _find_config_file(path: Path) -> Optional[Path]:
     """Find clyde configuration file in path or parent directories."""
     current = path
     while current != current.parent:
-        config_file = current / '.claude' / 'config.yaml'
+        config_file = current / '.clyde' / 'config.yaml'
         if config_file.exists():
             return config_file
         current = current.parent
@@ -348,12 +349,12 @@ def _sync_all_projects(base_path: Path, check: bool):
     projects_found = 0
     
     for item in base_path.iterdir():
-        if item.is_dir() and (item / '.claude' / 'config.yaml').exists():
+        if item.is_dir() and (item / '.clyde' / 'config.yaml').exists():
             projects_found += 1
             click.echo(f"🔄 Syncing {item.name}...")
             
             try:
-                config = ClydeConfig.from_file(item / '.claude' / 'config.yaml')
+                config = ClydeConfig.from_file(item / '.clyde' / 'config.yaml')
                 sync_manager = SyncManager(config)
                 
                 if check:
@@ -373,6 +374,184 @@ def _sync_all_projects(base_path: Path, check: bool):
         click.echo("❌ No clyde projects found in subdirectories")
     else:
         click.echo(f"🎉 Processed {projects_found} projects")
+
+
+@cli.group()
+def mcp():
+    """Manage Model Context Protocol (MCP) servers."""
+    pass
+
+
+@mcp.command('install')
+@click.option('--mcp', 'mcp_ids', multiple=True, help='Install specific MCP(s)')
+def mcp_install(mcp_ids: List[str]):
+    """Install MCP servers based on configuration."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        
+        if mcp_ids:
+            # Install specific MCPs
+            success = True
+            for mcp_id in mcp_ids:
+                if not manager.install_mcp(mcp_id):
+                    success = False
+        else:
+            # Install all configured MCPs
+            success = manager.install_all_mcps()
+        
+        if success:
+            manager.save_configurations()
+            click.echo("✅ MCP installation completed successfully")
+        else:
+            click.echo("❌ Some MCPs failed to install")
+            
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('list')
+@click.option('--category', help='Filter by category (core, development, ai_tools)')
+def mcp_list(category: Optional[str]):
+    """List available MCP servers."""
+    registry = MCPRegistry()
+    mcps = registry.list_mcps(category)
+    
+    if not mcps:
+        if category:
+            click.echo(f"No MCPs found in category '{category}'")
+        else:
+            click.echo("No MCPs available")
+        return
+    
+    if category:
+        click.echo(f"Available MCPs in '{category}' category:")
+    else:
+        click.echo("Available MCPs:")
+    
+    click.echo()
+    
+    for mcp_id, mcp_def in mcps.items():
+        click.echo(f"📦 {mcp_def.name} ({mcp_id})")
+        click.echo(f"   {mcp_def.description}")
+        click.echo(f"   Category: {mcp_def.category}")
+        
+        if mcp_def.required_env:
+            click.echo(f"   Required env: {', '.join(mcp_def.required_env)}")
+        
+        platforms = ", ".join(mcp_def.platforms)
+        click.echo(f"   Platforms: {platforms}")
+        
+        if mcp_def.notes:
+            click.echo(f"   Note: {mcp_def.notes}")
+        
+        click.echo()
+
+
+@mcp.command('status')
+def mcp_status():
+    """Show status of configured MCP servers."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        manager.status()
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('add')
+@click.argument('mcp_id')
+@click.option('--category', type=click.Choice(['core', 'development', 'ai_tools']), 
+              default='development', help='Category to add MCP to')
+def mcp_add(mcp_id: str, category: str):
+    """Add an MCP to the project configuration."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        # Check if MCP exists in registry
+        registry = MCPRegistry()
+        if not registry.get_mcp(mcp_id):
+            click.echo(f"❌ Unknown MCP: {mcp_id}")
+            click.echo("Run 'clyde mcp list' to see available MCPs")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        
+        # Add to appropriate category
+        if category not in config.mcps:
+            config.mcps[category] = []
+        
+        if mcp_id not in config.mcps[category]:
+            config.mcps[category].append(mcp_id)
+            config.save(config_file)
+            click.echo(f"✅ Added {mcp_id} to {category} MCPs")
+        else:
+            click.echo(f"⚠️ {mcp_id} is already in {category} MCPs")
+            
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('remove')
+@click.argument('mcp_id')
+def mcp_remove(mcp_id: str):
+    """Remove an MCP from the project configuration."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        
+        # Remove from all categories
+        removed = False
+        for category in ['core', 'development', 'ai_tools']:
+            if category in config.mcps and mcp_id in config.mcps[category]:
+                config.mcps[category].remove(mcp_id)
+                removed = True
+                click.echo(f"✅ Removed {mcp_id} from {category} MCPs")
+        
+        if removed:
+            config.save(config_file)
+        else:
+            click.echo(f"⚠️ {mcp_id} not found in any MCP category")
+            
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('config-only')
+def mcp_config_only():
+    """Generate MCP configuration files without installing."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        manager.save_configurations()
+        
+        click.echo("✅ MCP configuration files generated")
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
 
 
 if __name__ == '__main__':

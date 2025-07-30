@@ -1,9 +1,5 @@
 # Code Quality Standards
 
-## Core Principle
-
-Code quality encompasses readability, maintainability, reliability, and performance characteristics that make software systems sustainable and effective over time.
-
 ## When to Apply
 
 - All code development and review activities
@@ -44,17 +40,8 @@ Code should use resources efficiently:
 
 ## Implementation Guidelines
 
-### Code Review Checklist
-```
-□ Naming is clear and consistent
-□ Logic is easy to follow
-□ Error handling is comprehensive
-□ Tests cover critical paths
-□ No obvious security vulnerabilities
-□ Performance implications considered
-□ Documentation is adequate
-□ Follows project conventions
-```
+### Code Review Focus
+Focus on: naming clarity, logical flow, error handling, security, performance.
 
 ### Refactoring Triggers
 - **Complexity**: Functions/classes become too large or complex
@@ -72,61 +59,9 @@ Code should use resources efficiently:
 
 ## Examples
 
-### Poor Quality Example
-```python
-def calc(x, y, op):
-    if op == 'add':
-        return x + y
-    elif op == 'sub':
-        return x - y
-    elif op == 'mul':
-        return x * y
-    elif op == 'div':
-        return x / y  # No error handling
-    else:
-        return None   # Silent failure
-```
-
-### High Quality Example
-```python
-from enum import Enum
-from typing import Union
-
-class Operation(Enum):
-    ADD = "add"
-    SUBTRACT = "subtract"
-    MULTIPLY = "multiply"
-    DIVIDE = "divide"
-
-def calculate(first_operand: float, second_operand: float, operation: Operation) -> float:
-    """
-    Perform basic arithmetic operations on two numbers.
-    
-    Args:
-        first_operand: The first number in the operation
-        second_operand: The second number in the operation
-        operation: The arithmetic operation to perform
-        
-    Returns:
-        The result of the arithmetic operation
-        
-    Raises:
-        ValueError: If operation is invalid
-        ZeroDivisionError: If dividing by zero
-    """
-    if operation == Operation.ADD:
-        return first_operand + second_operand
-    elif operation == Operation.SUBTRACT:
-        return first_operand - second_operand
-    elif operation == Operation.MULTIPLY:
-        return first_operand * second_operand
-    elif operation == Operation.DIVIDE:
-        if second_operand == 0:
-            raise ZeroDivisionError("Cannot divide by zero")
-        return first_operand / second_operand
-    else:
-        raise ValueError(f"Unsupported operation: {operation}")
-```
+### Quality Examples
+**Poor:** `def calc(x, y, op): return x/y if op=='div' else None`  
+**Better:** Use descriptive names, type hints, proper error handling, and documentation for complex operations.
 
 ## Quality Practices
 
@@ -157,25 +92,3 @@ def calculate(first_operand: float, second_operand: float, operation: Operation)
 - **Magic Numbers**: Using unexplained constants throughout code
 - **Ignored Warnings**: Dismissing compiler or linter warnings
 
-## Integration Benefits
-
-- **Reduced Maintenance Cost**: Less time spent fixing and modifying code
-- **Improved Developer Experience**: Easier to understand and work with codebase
-- **Higher Reliability**: Fewer bugs and more predictable behavior
-- **Better Performance**: Efficient resource usage and faster execution
-- **Enhanced Collaboration**: Consistent standards enable better teamwork
-- **Long-term Sustainability**: Code remains valuable and maintainable over time
-
-## Quality Evolution
-
-### Assessment
-- Regular code quality audits
-- Developer feedback on code maintainability
-- Analysis of bug patterns and root causes
-- Performance monitoring and profiling
-
-### Improvement
-- Targeted refactoring of problematic areas
-- Updating and refining coding standards
-- Training on new quality practices
-- Tool improvements and automation enhancements

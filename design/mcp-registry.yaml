@@ -1,0 +1,98 @@
+# MCP Registry - Definitions for all supported MCPs
+# This file ships with clyde and defines how to install each MCP
+
+mcps:
+  sequential-thinking:
+    name: "Sequential Thinking"
+    description: "Advanced reasoning and step-by-step problem solving"
+    category: "core"
+    install:
+      method: "npx"
+      package: "@modelcontextprotocol/server-sequential-thinking"
+      args: ["-y"]
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  memory:
+    name: "Memory"
+    description: "Persistent memory across conversations"
+    category: "core"
+    install:
+      method: "npx"
+      package: "@iachilles/memento"
+      args: ["-y"]
+    env:
+      MEMORY_DB_PATH: "${CLYDE_DIR}/memory.db"
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  context7:
+    name: "Context7"
+    description: "Real-time documentation and code example lookup"
+    category: "core"
+    install:
+      method: "npx"
+      package: "@upstash/context7-mcp"
+      args: ["-y"]
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  playwright:
+    name: "Playwright"
+    description: "Browser automation and web testing"
+    category: "development"
+    install:
+      method: "npx"
+      package: "@playwright/mcp@latest"
+      args: ["-y"]
+    env:
+      HEADLESS: "true"
+    notes: "First run downloads Chromium (~170MB)"
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  task-master:
+    name: "Task Master"
+    description: "Advanced project and task management"
+    category: "development"
+    install:
+      method: "npx"
+      package: "task-master-ai"
+      args: ["-y", "--package=task-master-ai"]
+    env:
+      GOOGLE_AI_STUDIO_API_KEY: "${GOOGLE_AI_STUDIO_API_KEY}"
+    required_env: ["GOOGLE_AI_STUDIO_API_KEY"]
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  gemini:
+    name: "Gemini"
+    description: "Direct access to Google's Gemini AI"
+    category: "ai_tools"
+    install:
+      method: "npx"
+      package: "github:aliargun/mcp-server-gemini"
+      args: ["-y"]
+    env:
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+    required_env: ["GEMINI_API_KEY"]
+    platforms: ["macos", "linux", "windows", "wsl"]
+    
+  zen:
+    name: "Zen Coding"
+    description: "Multi-AI orchestration and collaborative development"
+    category: "ai_tools"
+    install:
+      method: "uvx"
+      package: "git+https://github.com/BeehiveInnovations/zen-mcp-server.git"
+      command: "zen-mcp-server"
+    dependencies:
+      - name: "uv"
+        install_cmd: "curl -LsSf https://astral.sh/uv/install.sh | sh"
+        verify_cmd: "uv --version"
+        path_addition: "${HOME}/.local/bin"
+    env:
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+    required_env: ["GEMINI_API_KEY"]
+    platforms: ["macos", "linux", "wsl"]  # No Windows support
+    
+# Default MCP sets by project type
+defaults:
+  minimal: ["sequential-thinking", "memory"]
+  standard: ["sequential-thinking", "memory", "context7", "playwright"] 
+  ai_enhanced: ["sequential-thinking", "memory", "context7", "playwright", "task-master", "zen", "gemini"]

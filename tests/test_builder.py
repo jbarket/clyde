@@ -33,7 +33,7 @@ class TestConfigBuilder:
             
             content = bootloader_file.read_text()
             assert "Claude Development Environment" in content
-            assert ".claude/generated.md" in content
+            assert ".clyde/generated.md" in content
     
     def test_create_project_files(self):
         """Test creation of project-specific files."""

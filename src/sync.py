@@ -20,8 +20,8 @@ class SyncManager:
         self.builder = ConfigBuilder(config)
         self.validator = ConfigValidator(config)
     
-    def sync(self):
-        """Synchronize configuration files."""
+    def sync(self, target: str = None):
+        """Synchronize configuration files for all targets or a specific target."""
         # Validate configuration first
         issues = self.validator.validate()
         if issues and self.config.options.get("validation_level") == "strict":
@@ -32,36 +32,55 @@ class SyncManager:
             for issue in issues:
                 print(f"  - {issue}")
         
-        # Generate and write the generated.md file
-        generated_content = self.builder.build_generated_file()
-        generated_file = self.config.project_path / ".claude" / "generated.md"
-        
-        # Ensure directory exists
-        generated_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Write the generated file
-        with open(generated_file, 'w', encoding='utf-8') as f:
-            f.write(generated_content)
+        # Sync specific target or all targets
+        if target:
+            if target not in self.config.targets:
+                raise ValueError(f"Target '{target}' not configured. Available targets: {', '.join(self.config.targets)}")
+            self.sync_target(target)
+        else:
+            # Sync all targets
+            for target_name in self.config.targets:
+                self.sync_target(target_name)
         
         # Update metadata
         self._update_sync_metadata()
     
-    def preview_changes(self) -> List[str]:
+    def sync_target(self, target: str):
+        """Synchronize configuration files for a specific target."""
+        # Generate target-specific content
+        generated_content = self.builder.build_generated_file_for_target(target)
+        generated_file = self.config.project_path / ".clyde" / f"generated-{target}.md"
+        
+        # Ensure directory exists
+        generated_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write the generated file for this target
+        with open(generated_file, 'w', encoding='utf-8') as f:
+            f.write(generated_content)
+        
+        print(f"Generated {generated_file.relative_to(self.config.project_path)} for {target}")
+    
+    def preview_changes(self, target: str = None) -> List[str]:
         """Preview what changes would be made without applying them."""
         changes = []
         
-        # Check if generated.md would change
-        generated_file = self.config.project_path / ".claude" / "generated.md"
-        new_content = self.builder.build_generated_file()
+        # Check changes for specific target or all targets
+        targets_to_check = [target] if target else self.config.targets
         
-        if generated_file.exists():
-            with open(generated_file, 'r', encoding='utf-8') as f:
-                current_content = f.read()
+        for target_name in targets_to_check:
+            # Check if target-specific generated file would change
+            generated_file = self.config.project_path / ".clyde" / f"generated-{target_name}.md"
+            new_content = self.builder.build_generated_file_for_target(target_name)
             
-            if current_content != new_content:
-                changes.append(f"Update {generated_file.relative_to(self.config.project_path)}")
-        else:
-            changes.append(f"Create {generated_file.relative_to(self.config.project_path)}")
+            if generated_file.exists():
+                with open(generated_file, 'r', encoding='utf-8') as f:
+                    current_content = f.read()
+                
+                if current_content != new_content:
+                    changes.append(f"Update {generated_file.relative_to(self.config.project_path)}")
+            else:
+                changes.append(f"Create {generated_file.relative_to(self.config.project_path)}")
+        
         
         # Check for configuration validation issues
         issues = self.validator.validate()
@@ -73,32 +92,44 @@ class SyncManager:
     def get_sync_status(self) -> Dict[str, Any]:
         """Get current synchronization status."""
         metadata = self._load_sync_metadata()
-        generated_file = self.config.project_path / ".claude" / "generated.md"
         
         status = {
             "last_sync": metadata.get("last_sync"),
             "config_hash": metadata.get("config_hash"),
             "current_hash": self.config.get_config_hash(),
-            "generated_exists": generated_file.exists(),
-            "needs_sync": False
+            "needs_sync": False,
+            "targets": {}
         }
         
-        # Determine if sync is needed
-        if not generated_file.exists():
-            status["needs_sync"] = True
-            status["reason"] = "Generated file does not exist"
-        elif status["config_hash"] != status["current_hash"]:
-            status["needs_sync"] = True
-            status["reason"] = "Configuration has changed"
-        elif self._is_generated_file_stale():
-            status["needs_sync"] = True
-            status["reason"] = "Generated file is older than source modules"
+        # Check each target
+        for target in self.config.targets:
+            generated_file = self.config.project_path / ".clyde" / f"generated-{target}.md"
+            target_status = {
+                "generated_exists": generated_file.exists(),
+                "needs_sync": False
+            }
+            
+            # Determine if sync is needed for this target
+            if not generated_file.exists():
+                target_status["needs_sync"] = True
+                target_status["reason"] = f"Generated file for {target} does not exist"
+                status["needs_sync"] = True
+            elif status["config_hash"] != status["current_hash"]:
+                target_status["needs_sync"] = True
+                target_status["reason"] = "Configuration has changed"
+                status["needs_sync"] = True
+            elif self._is_generated_file_stale_for_target(target):
+                target_status["needs_sync"] = True
+                target_status["reason"] = f"Generated file for {target} is older than source modules"
+                status["needs_sync"] = True
+            
+            status["targets"][target] = target_status
         
         return status
     
     def _update_sync_metadata(self):
         """Update synchronization metadata."""
-        metadata_file = self.config.project_path / ".claude" / ".sync_metadata"
+        metadata_file = self.config.project_path / ".clyde" / ".sync_metadata"
         
         metadata = {
             "last_sync": datetime.now().isoformat(),
@@ -113,7 +144,7 @@ class SyncManager:
     
     def _load_sync_metadata(self) -> Dict[str, Any]:
         """Load synchronization metadata."""
-        metadata_file = self.config.project_path / ".claude" / ".sync_metadata"
+        metadata_file = self.config.project_path / ".clyde" / ".sync_metadata"
         
         if not metadata_file.exists():
             return {}
@@ -125,23 +156,24 @@ class SyncManager:
         except (json.JSONDecodeError, IOError):
             return {}
     
-    def _is_generated_file_stale(self) -> bool:
-        """Check if generated file is older than any source modules."""
-        generated_file = self.config.project_path / ".claude" / "generated.md"
+    def _is_generated_file_stale_for_target(self, target: str) -> bool:
+        """Check if generated file for target is older than any source modules."""
+        generated_file = self.config.project_path / ".clyde" / f"generated-{target}.md"
         
         if not generated_file.exists():
             return True
         
         generated_mtime = generated_file.stat().st_mtime
         
-        # Check if any module is newer than generated file
-        for module_id in self.config.includes:
+        # Check if any module (including AI-specific) is newer than generated file
+        all_modules = self.config.get_all_modules_for_target(target)
+        for module_id in all_modules:
             module_path = self.config.get_module_path(module_id)
             if module_path.exists() and module_path.stat().st_mtime > generated_mtime:
                 return True
         
         # Check if config file is newer
-        config_file = self.config.project_path / ".claude" / "config.yaml"
+        config_file = self.config.project_path / ".clyde" / "config.yaml"
         if config_file.exists() and config_file.stat().st_mtime > generated_mtime:
             return True
         
@@ -171,15 +203,20 @@ class ChangeDetector:
         since_timestamp = since.timestamp()
         
         # Check configuration file
-        config_file = self.config.project_path / ".claude" / "config.yaml"
+        config_file = self.config.project_path / ".clyde" / "config.yaml"
         if config_file.exists() and config_file.stat().st_mtime > since_timestamp:
             changes.append("Configuration file modified")
         
-        # Check module files
-        for module_id in self.config.includes:
-            module_path = self.config.get_module_path(module_id)
-            if module_path.exists() and module_path.stat().st_mtime > since_timestamp:
-                changes.append(f"Module modified: {module_id}")
+        # Check module files (including AI-specific modules for all targets)
+        checked_modules = set()
+        for target in self.config.targets:
+            all_modules = self.config.get_all_modules_for_target(target)
+            for module_id in all_modules:
+                if module_id not in checked_modules:
+                    checked_modules.add(module_id)
+                    module_path = self.config.get_module_path(module_id)
+                    if module_path.exists() and module_path.stat().st_mtime > since_timestamp:
+                        changes.append(f"Module modified: {module_id}")
         
         return changes
     

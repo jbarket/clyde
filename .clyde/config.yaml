@@ -3,10 +3,15 @@ version: 1.0
 
 # Project metadata
 project:
-  name: "{{ project_name }}"
-  type: "{{ project_type }}"  # api, web, cli, library
-  language: "{{ language }}"  # python, javascript, typescript
-  framework: "{{ framework }}" # fastapi, react, nextjs, etc.
+  name: "clyde"
+  type: "application"  # api, web, cli, library
+  language: "python"  # python, javascript, typescript
+  framework: "" # fastapi, react, nextjs, etc.
+
+# Target AI assistants (defaults to ["claude"] if not specified)
+targets:
+  - claude
+  - gemini
 
 # Module inclusions
 includes:
@@ -17,10 +22,7 @@ includes:
   - tools.*
   
   # Language-specific modules (uncomment as needed)
-{% if language == "python" %}
   - languages.python.general
-  - languages.python.testing
-{% endif %}
   
   # Database modules (uncomment as needed)
   # - databases.postgres
@@ -43,5 +45,6 @@ options:
   validation_level: "normal"
   
   # File splitting options
-  max_tokens_per_file: 20000
-  split_strategy: "includes"
+  max_tokens_per_file: 100000
+  max_lines_per_file: 10000
+  split_strategy: "monolithic"  # monolithic, includes

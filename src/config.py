@@ -20,9 +20,11 @@ class ClydeConfig:
     framework: Optional[str] = None
     database: Optional[str] = None
     project_type: str = "application"
+    targets: List[str] = field(default_factory=lambda: ["claude"])
     includes: List[str] = field(default_factory=list)
     custom_modules: List[Dict[str, str]] = field(default_factory=list)
     options: Dict[str, Any] = field(default_factory=dict)
+    mcps: Dict[str, Any] = field(default_factory=dict)
     version: str = "1.0"
     
     def __post_init__(self):
@@ -32,27 +34,29 @@ class ClydeConfig:
         
         if not self.options:
             self._set_default_options()
+        
+        if not self.mcps:
+            self._set_default_mcps()
     
     def _set_default_includes(self):
         """Set default module includes based on language and framework."""
         # Core modules (always included)
         self.includes = [
-            "core.tdd",
-            "core.modularity", 
-            "core.dry",
-            "core.general"
+            "core.*",
+            "patterns.*", 
+            "tools.*"
         ]
         
         # Language-specific modules
         if self.language == "python":
             self.includes.extend([
-                "python.general",
-                "python.testing"
+                "languages.python.general",
+                "languages.python.testing"
             ])
         elif self.language in ["javascript", "typescript"]:
             self.includes.extend([
-                "javascript.general",
-                "javascript.testing"
+                "languages.javascript.general",
+                "languages.javascript.testing"
             ])
         
         # Framework-specific modules
@@ -62,15 +66,15 @@ class ClydeConfig:
         
         # Database modules
         if self.database:
-            self.includes.append(self.database)
+            self.includes.append(f"databases.{self.database}")
     
     def _get_framework_modules(self, framework: str) -> List[str]:
         """Get module list for a specific framework."""
         framework_map = {
-            "fastapi": ["fastapi.structure", "fastapi.patterns"],
-            "react": ["react.structure", "react.patterns"],
-            "nextjs": ["nextjs.structure", "nextjs.patterns"],
-            "django": ["python.django"],  # If we add Django modules later
+            "fastapi": ["frameworks.fastapi.structure", "frameworks.fastapi.patterns"],
+            "react": ["frameworks.react.structure", "frameworks.react.patterns"],
+            "nextjs": ["frameworks.nextjs.structure", "frameworks.nextjs.patterns"],
+            "django": ["frameworks.django.structure", "frameworks.django.patterns"],  # If we add Django modules later
         }
         
         return framework_map.get(framework, [])
@@ -80,7 +84,25 @@ class ClydeConfig:
         self.options = {
             "show_module_boundaries": True,
             "include_toc": True,
-            "validation_level": "normal"
+            "validation_level": "normal",
+            "max_tokens_per_file": 20000,
+            "split_strategy": "shared"
+        }
+    
+    def _set_default_mcps(self):
+        """Set default MCP configuration."""
+        self.mcps = {
+            "enabled": True,
+            "core": [
+                "sequential-thinking",
+                "memory", 
+                "context7"
+            ],
+            "development": [
+                "playwright"
+            ],
+            "ai_tools": [],
+            "env": {}
         }
     
     def add_module(self, module_id: str):
@@ -118,6 +140,32 @@ class ClydeConfig:
         
         return expanded
     
+    def get_ai_specific_modules(self, target: str) -> List[str]:
+        """Get all AI-specific modules for a given target."""
+        modules_dir = self.get_modules_dir()
+        ai_specific_dir = modules_dir / "ai-specific" / target
+        
+        if not ai_specific_dir.exists():
+            return []
+        
+        modules = []
+        for module_file in ai_specific_dir.glob("*.md"):
+            module_name = module_file.stem
+            module_id = f"ai-specific.{target}.{module_name}"
+            modules.append(module_id)
+        
+        return modules
+    
+    def get_all_modules_for_target(self, target: str) -> List[str]:
+        """Get all modules (explicit + AI-specific) for a target."""
+        all_modules = self.includes.copy()
+        
+        # Add AI-specific modules for this target
+        ai_modules = self.get_ai_specific_modules(target)
+        all_modules.extend(ai_modules)
+        
+        return all_modules
+    
     def get_modules_dir(self) -> Path:
         """Get the path to the modules directory."""
         # Assume modules are in the same directory as this file
@@ -130,7 +178,14 @@ class ClydeConfig:
         # Handle custom modules
         if module_id.startswith("custom."):
             custom_name = module_id.split(".", 1)[1]
-            return self.project_path / ".claude" / "custom" / f"{custom_name}.md"
+            return self.project_path / ".clyde" / "custom" / f"{custom_name}.md"
+        
+        # Handle AI-specific modules
+        if module_id.startswith("ai-specific."):
+            parts = module_id.split(".", 2)  # ai-specific.claude.formatting
+            if len(parts) == 3:
+                ai_name, module_name = parts[1], parts[2]
+                return modules_dir / "ai-specific" / ai_name / f"{module_name}.md"
         
         # Handle built-in modules
         module_path = modules_dir / f"{module_id.replace('.', '/')}.md"
@@ -160,6 +215,7 @@ class ClydeConfig:
                 "language": self.language,
                 "framework": self.framework
             },
+            "targets": self.targets,
             "includes": self.includes,
             "custom_modules": self.custom_modules,
             "options": self.options
@@ -177,6 +233,7 @@ class ClydeConfig:
             language=project_info.get("language", "python"),
             framework=project_info.get("framework"),
             database=data.get("database"),  # Legacy support
+            targets=data.get("targets", ["claude"]),
             includes=data.get("includes", []),
             custom_modules=data.get("custom_modules", []),
             options=data.get("options", {}),
@@ -192,13 +249,13 @@ class ClydeConfig:
         with open(config_file, 'r') as f:
             data = yaml.safe_load(f)
         
-        project_path = config_file.parent.parent  # .claude/config.yaml -> project root
+        project_path = config_file.parent.parent  # .clyde/config.yaml -> project root
         return cls.from_dict(data, project_path)
     
     def save(self, config_file: Optional[Path] = None):
         """Save configuration to YAML file."""
         if config_file is None:
-            config_file = self.project_path / ".claude" / "config.yaml"
+            config_file = self.project_path / ".clyde" / "config.yaml"
         
         # Ensure directory exists
         config_file.parent.mkdir(parents=True, exist_ok=True)
@@ -258,6 +315,25 @@ class ModuleResolver:
         
         # Expand any group references first
         expanded_includes = self.config.expand_groups(self.config.includes)
+        
+        for module_id in expanded_includes:
+            module_content = self.resolve_module(module_id)
+            if module_content:
+                content[module_id] = module_content
+            else:
+                print(f"Warning: Module not found: {module_id}")
+        
+        return content
+    
+    def get_all_module_content_for_target(self, target: str) -> Dict[str, str]:
+        """Get content for all modules (explicit + AI-specific) for a target."""
+        content = {}
+        
+        # Get all modules for this target (includes AI-specific)
+        all_modules = self.config.get_all_modules_for_target(target)
+        
+        # Expand any group references
+        expanded_includes = self.config.expand_groups(all_modules)
         
         for module_id in expanded_includes:
             module_content = self.resolve_module(module_id)

@@ -3,24 +3,27 @@ version: 1.0
 
 # Project metadata
 project:
-  name: "{{ project_name }}"
-  type: "{{ project_type }}"  # api, web, cli, library
-  language: "{{ language }}"  # python, javascript, typescript
-  framework: "{{ framework }}" # fastapi, react, nextjs, etc.
+  name: "TestProject"
+  type: "application"  # api, web, cli, library
+  language: "python"  # python, javascript, typescript
+  framework: "" # fastapi, react, nextjs, etc.
 
 # Module inclusions
 includes:
   # Core principles (recommended for all projects)
   - core.*
   
+  # Development patterns (recommended for all projects)
+  - patterns.*
+  
   # Tool modules (recommended for all projects)
   - tools.*
   
   # Language-specific modules (uncomment as needed)
-{% if language == "python" %}
+
   - languages.python.general
   - languages.python.testing
-{% endif %}
+
   
   # Database modules (uncomment as needed)
   # - databases.postgres

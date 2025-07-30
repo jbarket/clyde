@@ -27,8 +27,8 @@ class TestCLIInit:
             assert " Initialized clyde project" in result.output
             
             # Check that files were created
-            assert Path('.claude').exists()
-            assert Path('.claude/config.yaml').exists()
+            assert Path('.clyde').exists()
+            assert Path('.clyde/config.yaml').exists()
             assert Path('claude.md').exists()
     
     def test_init_with_options(self):
@@ -47,7 +47,7 @@ class TestCLIInit:
             assert " Initialized clyde project" in result.output
             
             # Check configuration content
-            with open('.claude/config.yaml') as f:
+            with open('.clyde/config.yaml') as f:
                 config_content = f.read()
                 assert 'python' in config_content
                 assert 'fastapi' in config_content
@@ -58,7 +58,7 @@ class TestCLIInit:
         
         with runner.isolated_filesystem():
             Path('.claude').mkdir()
-            Path('.claude/config.yaml').touch()
+            Path('.clyde/config.yaml').touch()
             
             # Should prompt for overwrite
             result = runner.invoke(cli, ['init'], input='n\n')
@@ -80,7 +80,7 @@ class TestCLIInit:
             ])
             
             assert result.exit_code == 0
-            assert Path('myproject/.claude/config.yaml').exists()
+            assert Path('myproject/.clyde/config.yaml').exists()
 
 
 class TestCLISync:
@@ -138,7 +138,7 @@ class TestCLISync:
             result = self.runner.invoke(cli, ['sync', '--check'])
             
             assert result.exit_code == 0
-            assert "=Ë Would make the following changes:" in result.output
+            assert "=ï¿½ Would make the following changes:" in result.output
             assert "Update generated.md" in result.output
             mock_sync_instance.preview_changes.assert_called_once()
     
@@ -188,7 +188,7 @@ class TestCLIListModules:
             result = runner.invoke(cli, ['list-modules'])
             
             assert result.exit_code == 0
-            assert "=Ú Available modules:" in result.output
+            assert "=ï¿½ Available modules:" in result.output
 
 
 class TestCLIShow:
@@ -241,7 +241,7 @@ class TestCLICreateModule:
             assert " Created custom module" in result.output
             
             # Check that module file was created
-            module_file = Path('.claude/custom/my-patterns.md')
+            module_file = Path('.clyde/custom/my-patterns.md')
             assert module_file.exists()
             
             # Check content
@@ -263,8 +263,8 @@ class TestCLICreateModule:
         
         with runner.isolated_filesystem():
             # Create module first
-            Path('.claude/custom').mkdir(parents=True)
-            Path('.claude/custom/existing.md').touch()
+            Path('.clyde/custom').mkdir(parents=True)
+            Path('.clyde/custom/existing.md').touch()
             
             # Try to create again, decline overwrite
             result = runner.invoke(cli, ['create-module', 'custom.existing'], input='n\n')

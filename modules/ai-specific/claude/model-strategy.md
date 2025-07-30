@@ -1,0 +1,94 @@
+# Claude Model Strategy
+
+## Model Selection Strategy
+
+### Model Capabilities by Type
+- **Claude 3.5 Sonnet**: Best for complex reasoning, coding, analysis
+- **Claude 3 Haiku**: Fastest response, simple tasks, high-volume operations  
+- **Claude 3 Opus**: Most capable for creative work, complex analysis
+
+### Selection Criteria
+- **High complexity** (analysis, coding, reasoning): Claude 3.5 Sonnet
+- **Critical response time** or simple tasks: Claude 3 Haiku  
+- **Creative/research** work: Claude 3 Opus
+- **Default**: Claude 3.5 Sonnet for balanced performance
+
+## Prompting Strategies
+
+### Structured Prompting Template
+Use clear task description, relevant context, specific requirements, desired output format, and concrete examples when helpful.
+
+### Few-Shot Learning Pattern
+Provide 2-3 input/output examples before presenting the actual task to establish pattern recognition.
+
+### Chain of Thought
+Request step-by-step reasoning: identify requirements, break down problem, solve systematically, combine results, verify solution.
+
+## Context Window Management
+
+### Context Optimization Strategy
+Prioritize context by importance: current task, recent context, code examples, documentation, historical context. Truncate intelligently when approaching token limits.
+
+### Information Hierarchy
+1. **Critical Context** (current task, immediate requirements)
+2. **Supporting Context** (relevant code, recent changes)
+3. **Reference Material** (documentation, examples)
+4. **Background Information** (project history, decisions)
+
+## Advanced Techniques
+
+### System Message Templates
+Define role-specific system messages for coding (clean, maintainable code), analysis (evidence-based reasoning), and debugging (systematic problem-solving).
+
+### Response Format Control
+Use structured templates for code reviews (summary, issues by severity, recommendations) and technical analysis (findings, key points, recommendations, next steps).
+
+## Code Generation Strategies
+
+### Iterative Refinement Process
+1. **Initial Implementation**: Create basic working version
+2. **Error Handling**: Add comprehensive error handling  
+3. **Optimization**: Improve performance and efficiency
+4. **Documentation**: Add comments and docstrings
+5. **Testing**: Include test cases and edge cases
+
+### Code Quality Requirements
+Generate production-ready code that includes:
+- Type hints (Python/TypeScript)
+- Comprehensive error handling
+- Input validation
+- Clear documentation
+- Unit test examples
+- Performance considerations
+- Security best practices
+
+## Multi-Turn Conversations
+
+### Context Continuity Management
+Maintain conversation history, keep recent exchanges (5-10), summarize older context, and format context for new requests.
+
+## Error Handling and Recovery
+
+### Common Issues and Solutions
+- **Context overflow**: Reduce context size, prioritize recent information
+- **Unclear requirements**: Provide specific requirements and examples  
+- **Incomplete response**: Ask Claude to continue from where it left off
+
+## Best Practices Summary
+
+### Prompting
+- **Be specific** about requirements and output format
+- **Provide context** relevant to the task
+- **Use examples** when appropriate
+- **Structure prompts** clearly with headers and sections
+
+### Model Selection
+- **Sonnet** for most development tasks
+- **Haiku** for simple, fast operations
+- **Opus** for complex creative or analytical work
+
+### Context Management
+- **Prioritize recent** and relevant information
+- **Summarize older** context when needed
+- **Maintain conversation** state across interactions
+- **Monitor token usage** to avoid context overflow

@@ -4,7 +4,7 @@ Clyde is a tool that standardizes how Claude approaches software development acr
 
 ## Core Concept
 
-Projects using Clyde have a simple "bootloader" `claude.md` that never changes, which instructs Claude to read generated configuration files from a `.claude/` directory. This allows centralized management of development standards while supporting project-specific customizations.
+Projects using Clyde have a simple "bootloader" `claude.md` that never changes, which instructs Claude to read generated configuration files from a `.clyde/` directory. This allows centralized management of development standards while supporting project-specific customizations.
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ After initialization, your project will have:
 ```
 your-project/
 ├── claude.md                    # Bootloader (don't edit)
-├── .claude/
+├── .clyde/
 │   ├── config.yaml             # Main configuration (edit this)
 │   ├── generated.md            # Auto-generated standards (don't edit)
 │   ├── project.md              # Project-specific instructions
@@ -89,7 +89,7 @@ your-project/
 
 ## Configuration
 
-Edit `.claude/config.yaml` to customize your project:
+Edit `.clyde/config.yaml` to customize your project:
 
 ```yaml
 # Clyde Configuration
