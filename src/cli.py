@@ -384,8 +384,10 @@ def mcp():
 
 @mcp.command('install')
 @click.option('--mcp', 'mcp_ids', multiple=True, help='Install specific MCP(s)')
-def mcp_install(mcp_ids: List[str]):
-    """Install MCP servers based on configuration."""
+@click.option('--force', is_flag=True, help='Skip conflict detection and force install')
+@click.option('--backup', is_flag=True, default=True, help='Create backup before making changes')
+def mcp_install(mcp_ids: List[str], force: bool, backup: bool):
+    """Install MCP servers with conflict detection and backup."""
     try:
         config_file = Path('.clyde/config.yaml')
         if not config_file.exists():
@@ -395,11 +397,25 @@ def mcp_install(mcp_ids: List[str]):
         config = ClydeConfig.from_file(config_file)
         manager = MCPManager(config)
         
+        # Create backups if requested
+        if backup and not force:
+            backup_paths = [
+                manager.claude_desktop_config_path, 
+                manager.claude_code_config_path,
+                manager.gemini_global_config_path,
+                manager.gemini_project_config_path
+            ]
+            for config_path in backup_paths:
+                if config_path.exists():
+                    backup_path = manager.backup_config(config_path)
+                    if backup_path:
+                        click.echo(f"📦 Backed up {config_path.name} to {backup_path.name}")
+        
         if mcp_ids:
             # Install specific MCPs
             success = True
             for mcp_id in mcp_ids:
-                if not manager.install_mcp(mcp_id):
+                if not manager.install_mcp(mcp_id, interactive=not force):
                     success = False
         else:
             # Install all configured MCPs
@@ -454,8 +470,9 @@ def mcp_list(category: Optional[str]):
 
 
 @mcp.command('status')
-def mcp_status():
-    """Show status of configured MCP servers."""
+@click.option('--detailed', is_flag=True, help='Show detailed status including backups and versions')
+def mcp_status(detailed: bool):
+    """Show comprehensive status of MCP servers."""
     try:
         config_file = Path('.clyde/config.yaml')
         if not config_file.exists():
@@ -464,7 +481,7 @@ def mcp_status():
         
         config = ClydeConfig.from_file(config_file)
         manager = MCPManager(config)
-        manager.status()
+        manager.status(detailed=detailed)
         
     except Exception as e:
         click.echo(f"❌ Error: {e}")
@@ -550,6 +567,171 @@ def mcp_config_only():
         
         click.echo("✅ MCP configuration files generated")
         
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('scan')
+def mcp_scan():
+    """Scan for existing MCP installations across all sources."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        installations = manager.scan_existing_installations()
+        
+        if not installations:
+            click.echo("No MCP installations found")
+            return
+        
+        click.echo(f"🔍 Found {len(installations)} MCP installations:")
+        click.echo()
+        
+        for inst in installations:
+            working_icon = "🟢" if inst.working else "🔴"
+            click.echo(f"  {working_icon} {inst.name}")
+            click.echo(f"      Source: {inst.config_source}")
+            click.echo(f"      Method: {inst.install_method}")
+            if inst.version:
+                click.echo(f"      Version: {inst.version}")
+            if inst.command_path:
+                click.echo(f"      Command: {inst.command_path}")
+            click.echo()
+            
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('conflicts')
+@click.option('--mcp', 'mcp_ids', multiple=True, help='Check conflicts for specific MCP(s)')
+def mcp_conflicts(mcp_ids: List[str]):
+    """Check for conflicts between desired and existing MCP installations."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        
+        # Use specified MCPs or all enabled MCPs
+        if mcp_ids:
+            check_mcps = list(mcp_ids)
+        else:
+            check_mcps = manager.get_enabled_mcps()
+        
+        if not check_mcps:
+            click.echo("No MCPs to check for conflicts")
+            return
+        
+        conflicts = manager.detect_conflicts(check_mcps)
+        
+        if not conflicts:
+            click.echo("✅ No conflicts detected")
+            return
+        
+        click.echo(f"⚠️  Found {len(conflicts)} conflicts:")
+        click.echo()
+        
+        for conflict in conflicts:
+            click.echo(f"🚨 {conflict.mcp_id}: {conflict.conflict_type}")
+            click.echo(f"   {conflict.message}")
+            click.echo(f"   Existing: {conflict.existing.install_method} via {conflict.existing.config_source}")
+            click.echo(f"   Desired:  {conflict.desired.install_method} (Clyde managed)")
+            click.echo(f"   Options: {', '.join(conflict.resolution_options)}")
+            click.echo()
+            
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+@mcp.command('backup')
+@click.option('--restore', type=click.Path(exists=True), help='Restore from backup file')
+@click.option('--list', 'list_backups', is_flag=True, help='List available backups')
+def mcp_backup(restore: Optional[str], list_backups: bool):
+    """Backup or restore MCP configuration files."""
+    try:
+        config_file = Path('.clyde/config.yaml')
+        if not config_file.exists():
+            click.echo("❌ No clyde project found. Run 'clyde init' first.")
+            return
+        
+        config = ClydeConfig.from_file(config_file)
+        manager = MCPManager(config)
+        
+        if list_backups:
+            # List available backups
+            all_backups = []
+            backup_paths = [
+                manager.claude_desktop_config_path, 
+                manager.claude_code_config_path,
+                manager.gemini_global_config_path,
+                manager.gemini_project_config_path
+            ]
+            for config_path in backup_paths:
+                backups = manager.list_backups(config_path)
+                all_backups.extend([(backup, config_path.name) for backup in backups])
+            
+            if not all_backups:
+                click.echo("No backups found")
+                return
+            
+            click.echo("📦 Available backups:")
+            for backup_path, config_name in sorted(all_backups, key=lambda x: x[0].stat().st_mtime, reverse=True):
+                click.echo(f"  {backup_path.name} (for {config_name})")
+            return
+        
+        if restore:
+            # Restore from backup
+            restore_path = Path(restore)
+            
+            # Determine which config this backup is for
+            if 'claude_desktop_config' in restore_path.name:
+                original_path = manager.claude_desktop_config_path
+            elif 'claude_code_config' in restore_path.name:
+                original_path = manager.claude_code_config_path
+            elif 'settings' in restore_path.name and '.gemini' in str(restore_path):
+                # Determine if it's global or project Gemini config
+                if str(restore_path.parent).endswith('.gemini'):
+                    original_path = manager.gemini_global_config_path
+                else:
+                    original_path = manager.gemini_project_config_path
+            else:
+                click.echo("❌ Cannot determine target configuration file from backup name")
+                return
+            
+            success = manager.restore_config(restore_path, original_path)
+            if success:
+                click.echo(f"✅ Restored {original_path.name} from {restore_path.name}")
+            else:
+                click.echo(f"❌ Failed to restore {original_path.name}")
+            return
+        
+        # Create backups
+        backups_created = 0
+        backup_paths = [
+            manager.claude_desktop_config_path, 
+            manager.claude_code_config_path,
+            manager.gemini_global_config_path,
+            manager.gemini_project_config_path
+        ]
+        for config_path in backup_paths:
+            if config_path.exists():
+                backup_path = manager.backup_config(config_path)
+                if backup_path:
+                    click.echo(f"📦 Backed up {config_path.name} to {backup_path.name}")
+                    backups_created += 1
+        
+        if backups_created == 0:
+            click.echo("No configuration files found to backup")
+        else:
+            click.echo(f"✅ Created {backups_created} backup(s)")
+            
     except Exception as e:
         click.echo(f"❌ Error: {e}")
 

@@ -7,9 +7,12 @@ import json
 import yaml
 import subprocess
 import os
+import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
+from datetime import datetime
+import platform
 
 from .config import ClydeConfig
 
@@ -41,6 +44,29 @@ class MCPDefinition:
             self.platforms = ["macos", "linux", "windows", "wsl"]
         if self.dependencies is None:
             self.dependencies = []
+
+
+@dataclass
+class MCPInstallation:
+    """Represents an existing MCP installation."""
+    mcp_id: str
+    name: str
+    install_method: str
+    version: Optional[str] = None
+    command_path: Optional[str] = None
+    config_source: Optional[str] = None  # claude-desktop, claude-code, clyde, manual
+    working: bool = False
+
+
+@dataclass
+class MCPConflict:
+    """Represents a conflict between existing and desired MCP installation."""
+    mcp_id: str
+    conflict_type: str  # duplicate, version_mismatch, method_conflict
+    existing: MCPInstallation
+    desired: MCPDefinition
+    message: str
+    resolution_options: List[str]
 
 
 class MCPRegistry:
@@ -102,6 +128,34 @@ class MCPManager:
         self.registry = MCPRegistry()
         self.project_path = config.project_path
         self.clyde_dir = self.project_path / ".clyde"
+        self.claude_desktop_config_path = self._get_claude_desktop_config_path()
+        self.claude_code_config_path = self._get_claude_code_config_path()
+        self.gemini_global_config_path = self._get_gemini_global_config_path()
+        self.gemini_project_config_path = self._get_gemini_project_config_path()
+        
+    def _get_claude_desktop_config_path(self) -> Path:
+        """Get the path to Claude Desktop configuration file."""
+        system = platform.system().lower()
+        if system == "darwin":  # macOS
+            return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+        elif system == "linux":
+            return Path.home() / ".config/claude/claude_desktop_config.json"
+        elif system == "windows":
+            return Path.home() / "AppData/Roaming/Claude/claude_desktop_config.json"
+        else:
+            return Path.home() / ".config/claude/claude_desktop_config.json"
+    
+    def _get_claude_code_config_path(self) -> Path:
+        """Get the path to Claude Code configuration file."""
+        return Path.home() / ".config/claude/claude_code_config.json"
+    
+    def _get_gemini_global_config_path(self) -> Path:
+        """Get the path to Gemini CLI global configuration file."""
+        return Path.home() / ".gemini/settings.json"
+    
+    def _get_gemini_project_config_path(self) -> Path:
+        """Get the path to Gemini CLI project configuration file."""
+        return self.project_path / ".gemini/settings.json"
     
     def get_enabled_mcps(self) -> List[str]:
         """Get all enabled MCPs from config."""
@@ -114,6 +168,396 @@ class MCPManager:
         mcps.extend(self.config.mcps.get('ai_tools', []))
         
         return mcps
+    
+    def scan_existing_installations(self) -> List[MCPInstallation]:
+        """Scan for existing MCP installations across all sources."""
+        installations = []
+        
+        # Check Claude Desktop config
+        installations.extend(self._scan_claude_desktop_config())
+        
+        # Check Claude Code config  
+        installations.extend(self._scan_claude_code_config())
+        
+        # Check Gemini CLI configs
+        installations.extend(self._scan_gemini_global_config())
+        installations.extend(self._scan_gemini_project_config())
+        
+        # Check global npm packages
+        installations.extend(self._scan_npm_global_packages())
+        
+        # Check uvx installations
+        installations.extend(self._scan_uvx_installations())
+        
+        return installations
+    
+    def _scan_claude_desktop_config(self) -> List[MCPInstallation]:
+        """Scan Claude Desktop configuration for existing MCPs."""
+        installations = []
+        
+        if not self.claude_desktop_config_path.exists():
+            return installations
+        
+        try:
+            with open(self.claude_desktop_config_path, 'r') as f:
+                config = json.load(f)
+            
+            mcp_servers = config.get('mcpServers', {})
+            for server_id, server_config in mcp_servers.items():
+                command = server_config.get('command', '')
+                args = server_config.get('args', [])
+                
+                # Determine install method and package
+                install_method = None
+                package = None
+                if command == 'npx':
+                    install_method = 'npx'
+                    package = args[-1] if args else None
+                elif command == 'uvx':
+                    install_method = 'uvx'
+                    # Extract package from uvx args
+                    if len(args) >= 2 and args[0] == '--from':
+                        package = args[1]
+                
+                installation = MCPInstallation(
+                    mcp_id=server_id,
+                    name=server_id,
+                    install_method=install_method or 'manual',
+                    command_path=command,
+                    config_source='claude-desktop',
+                    working=self._test_mcp_from_config(server_config)
+                )
+                installations.append(installation)
+                
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+            print(f"Warning: Could not read Claude Desktop config: {e}")
+        
+        return installations
+    
+    def _scan_claude_code_config(self) -> List[MCPInstallation]:
+        """Scan Claude Code configuration for existing MCPs."""
+        installations = []
+        
+        if not self.claude_code_config_path.exists():
+            return installations
+        
+        try:
+            with open(self.claude_code_config_path, 'r') as f:
+                config = json.load(f)
+            
+            # Similar logic to Claude Desktop scanning
+            mcp_servers = config.get('mcpServers', {})
+            for server_id, server_config in mcp_servers.items():
+                command = server_config.get('command', '')
+                args = server_config.get('args', [])
+                
+                install_method = None
+                package = None
+                if command == 'npx':
+                    install_method = 'npx'
+                    package = args[-1] if args else None
+                elif command == 'uvx':
+                    install_method = 'uvx'
+                    if len(args) >= 2 and args[0] == '--from':
+                        package = args[1]
+                
+                installation = MCPInstallation(
+                    mcp_id=server_id,
+                    name=server_id,
+                    install_method=install_method or 'manual',
+                    command_path=command,
+                    config_source='claude-code',
+                    working=self._test_mcp_from_config(server_config)
+                )
+                installations.append(installation)
+                
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+            print(f"Warning: Could not read Claude Code config: {e}")
+        
+        return installations
+    
+    def _scan_gemini_global_config(self) -> List[MCPInstallation]:
+        """Scan Gemini CLI global configuration for existing MCPs."""
+        return self._scan_gemini_config(self.gemini_global_config_path, 'gemini-global')
+    
+    def _scan_gemini_project_config(self) -> List[MCPInstallation]:
+        """Scan Gemini CLI project configuration for existing MCPs."""
+        return self._scan_gemini_config(self.gemini_project_config_path, 'gemini-project')
+    
+    def _scan_gemini_config(self, config_path: Path, config_source: str) -> List[MCPInstallation]:
+        """Scan a Gemini CLI settings.json file for MCP servers.
+        
+        Note: Gemini CLI merge behavior is assumed to be hierarchical (project overrides global).
+        Users should verify this by testing with both global and project configurations and
+        running 'gemini /mcp' to confirm which servers are active.
+        """
+        installations = []
+        
+        if not config_path.exists():
+            return installations
+        
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            mcp_servers = config.get('mcpServers', {})
+            for server_id, server_config in mcp_servers.items():
+                command = server_config.get('command', '')
+                args = server_config.get('args', [])
+                env_vars = server_config.get('env', {})
+                
+                # Determine install method and package
+                install_method = None
+                package = None
+                if command == 'npx':
+                    install_method = 'npx'
+                    # Find the package name from args (last non-flag argument)
+                    for arg in reversed(args):
+                        if not arg.startswith('-'):
+                            package = arg
+                            break
+                elif command == 'uvx':
+                    install_method = 'uvx'
+                    # Extract package from uvx args
+                    if len(args) >= 2 and args[0] == '--from':
+                        package = args[1]
+                elif command in ['node', 'python', 'python3']:
+                    install_method = 'manual'
+                    package = args[0] if args else None
+                else:
+                    install_method = 'manual'
+                
+                installation = MCPInstallation(
+                    mcp_id=server_id,
+                    name=server_id,
+                    install_method=install_method or 'manual',
+                    command_path=command,
+                    config_source=config_source,
+                    working=self._test_mcp_from_gemini_config(server_config)
+                )
+                installations.append(installation)
+                
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+            print(f"Warning: Could not read Gemini config {config_path}: {e}")
+        
+        return installations
+    
+    def _test_mcp_from_gemini_config(self, server_config: Dict[str, Any]) -> bool:
+        """Test if a Gemini MCP server configuration is working."""
+        try:
+            command = server_config.get('command', '')
+            args = server_config.get('args', [])
+            env = server_config.get('env', {})
+            
+            # Merge environment variables
+            test_env = os.environ.copy()
+            test_env.update(env)
+            
+            # Test command with --help
+            test_cmd = [command] + args + ['--help']
+            result = subprocess.run(test_cmd, capture_output=True, text=True, 
+                                  timeout=10, env=test_env)
+            return result.returncode == 0
+            
+        except Exception:
+            return False
+    
+    def _scan_npm_global_packages(self) -> List[MCPInstallation]:
+        """Scan for globally installed npm packages that might be MCPs."""
+        installations = []
+        
+        try:
+            result = subprocess.run(['npm', 'list', '-g', '--depth=0', '--json'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                dependencies = data.get('dependencies', {})
+                
+                for package_name, package_info in dependencies.items():
+                    # Check if this looks like an MCP package
+                    if any(mcp_keyword in package_name.lower() for mcp_keyword in ['mcp', 'context', 'server']):
+                        installation = MCPInstallation(
+                            mcp_id=package_name,
+                            name=package_name,
+                            install_method='npm-global',
+                            version=package_info.get('version'),
+                            config_source='npm-global'
+                        )
+                        installations.append(installation)
+                        
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, json.JSONDecodeError):
+            pass  # npm not available or other issues
+        
+        return installations
+    
+    def _scan_uvx_installations(self) -> List[MCPInstallation]:
+        """Scan for uvx installed packages that might be MCPs."""
+        installations = []
+        
+        try:
+            result = subprocess.run(['uvx', '--list'], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if line and not line.startswith('No'):
+                        # Parse uvx list output (format may vary)
+                        package_name = line.split()[0] if line.split() else line
+                        if any(mcp_keyword in package_name.lower() for mcp_keyword in ['mcp', 'context', 'server']):
+                            installation = MCPInstallation(
+                                mcp_id=package_name,
+                                name=package_name,
+                                install_method='uvx',
+                                config_source='uvx'
+                            )
+                            installations.append(installation)
+                            
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            pass  # uvx not available or other issues
+        
+        return installations
+    
+    def _test_mcp_from_config(self, server_config: Dict[str, Any]) -> bool:
+        """Test if an MCP server configuration is working."""
+        try:
+            command = server_config.get('command', '')
+            args = server_config.get('args', [])
+            env = server_config.get('env', {})
+            
+            # Merge environment variables
+            test_env = os.environ.copy()
+            test_env.update(env)
+            
+            # Test command with --help
+            test_cmd = [command] + args + ['--help']
+            result = subprocess.run(test_cmd, capture_output=True, text=True, 
+                                  timeout=10, env=test_env)
+            return result.returncode == 0
+            
+        except Exception:
+            return False
+    
+    def detect_conflicts(self, mcp_ids: List[str]) -> List[MCPConflict]:
+        """Detect conflicts between desired MCPs and existing installations."""
+        conflicts = []
+        existing_installations = self.scan_existing_installations()
+        
+        for mcp_id in mcp_ids:
+            mcp_def = self.registry.get_mcp(mcp_id)
+            if not mcp_def:
+                continue
+            
+            # Find existing installations of this MCP
+            existing = [inst for inst in existing_installations if inst.mcp_id == mcp_id]
+            
+            for installation in existing:
+                conflict = self._analyze_conflict(installation, mcp_def)
+                if conflict:
+                    conflicts.append(conflict)
+        
+        return conflicts
+    
+    def _analyze_conflict(self, existing: MCPInstallation, desired: MCPDefinition) -> Optional[MCPConflict]:
+        """Analyze a potential conflict between existing and desired installation."""
+        
+        # Check for duplicate installation
+        if existing.config_source in ['claude-desktop', 'claude-code']:
+            return MCPConflict(
+                mcp_id=existing.mcp_id,
+                conflict_type='duplicate',
+                existing=existing,
+                desired=desired,
+                message=f"{existing.name} is already configured in {existing.config_source}",
+                resolution_options=['skip', 'replace', 'merge']
+            )
+        
+        # Check for method conflicts
+        if existing.install_method != desired.install_method and existing.install_method != 'manual':
+            return MCPConflict(
+                mcp_id=existing.mcp_id,
+                conflict_type='method_conflict',
+                existing=existing,
+                desired=desired,
+                message=f"{existing.name} is installed via {existing.install_method}, but Clyde wants to use {desired.install_method}",
+                resolution_options=['skip', 'uninstall_and_reinstall', 'use_existing']
+            )
+        
+        # Check for version conflicts (if version info available)
+        if existing.version and hasattr(desired, 'version') and desired.version:
+            if existing.version != desired.version:
+                return MCPConflict(
+                    mcp_id=existing.mcp_id,
+                    conflict_type='version_mismatch',
+                    existing=existing,
+                    desired=desired,
+                    message=f"{existing.name} version {existing.version} conflicts with desired version {desired.version}",
+                    resolution_options=['skip', 'upgrade', 'downgrade']
+                )
+        
+        return None
+    
+    def backup_config(self, config_path: Path) -> Optional[Path]:
+        """Create a backup of a configuration file."""
+        if not config_path.exists():
+            return None
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = config_path.parent / f"{config_path.stem}_backup_{timestamp}{config_path.suffix}"
+        
+        try:
+            shutil.copy2(config_path, backup_path)
+            return backup_path
+        except Exception as e:
+            print(f"Warning: Could not backup {config_path}: {e}")
+            return None
+    
+    def restore_config(self, backup_path: Path, original_path: Path) -> bool:
+        """Restore a configuration file from backup."""
+        try:
+            if backup_path.exists():
+                shutil.copy2(backup_path, original_path)
+                return True
+        except Exception as e:
+            print(f"Error: Could not restore config from {backup_path}: {e}")
+        return False
+    
+    def list_backups(self, config_path: Path) -> List[Path]:
+        """List available backups for a configuration file."""
+        if not config_path.parent.exists():
+            return []
+        
+        backup_pattern = f"{config_path.stem}_backup_*{config_path.suffix}"
+        return list(config_path.parent.glob(backup_pattern))
+    
+    def resolve_conflict_interactive(self, conflict: MCPConflict) -> str:
+        """Interactively resolve a conflict with user input."""
+        print(f"\n🚨 Conflict detected: {conflict.message}")
+        print(f"   Existing: {conflict.existing.install_method} via {conflict.existing.config_source}")
+        print(f"   Desired:  {conflict.desired.install_method} (Clyde managed)")
+        print()
+        
+        print("Resolution options:")
+        for i, option in enumerate(conflict.resolution_options, 1):
+            option_desc = {
+                'skip': 'Skip this MCP (keep existing)',
+                'replace': 'Replace existing with Clyde version',
+                'merge': 'Merge configurations (if possible)',
+                'uninstall_and_reinstall': 'Uninstall existing and reinstall via Clyde',
+                'use_existing': 'Use existing installation (add to Clyde config)',
+                'upgrade': 'Upgrade to newer version',
+                'downgrade': 'Downgrade to requested version'
+            }
+            print(f"  {i}. {option}: {option_desc.get(option, option)}")
+        
+        while True:
+            try:
+                choice = input(f"Choose option (1-{len(conflict.resolution_options)}): ").strip()
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(conflict.resolution_options):
+                    return conflict.resolution_options[choice_idx]
+                else:
+                    print("Invalid choice. Please try again.")
+            except (ValueError, KeyboardInterrupt):
+                print("Invalid input. Please enter a number.")
     
     def install_dependencies(self, mcp_def: MCPDefinition) -> bool:
         """Install dependencies for an MCP."""
@@ -156,8 +600,8 @@ class MCPManager:
                 
         return True
     
-    def install_mcp(self, mcp_id: str) -> bool:
-        """Install a single MCP."""
+    def install_mcp(self, mcp_id: str, interactive: bool = True) -> bool:
+        """Install a single MCP with conflict detection."""
         mcp_def = self.registry.get_mcp(mcp_id)
         if not mcp_def:
             print(f"✗ Unknown MCP: {mcp_id}")
@@ -170,6 +614,25 @@ class MCPManager:
         if current_platform not in mcp_def.platforms:
             print(f"✗ {mcp_def.name} is not supported on {current_platform}")
             return False
+        
+        # Detect conflicts first
+        conflicts = self.detect_conflicts([mcp_id])
+        if conflicts and interactive:
+            for conflict in conflicts:
+                resolution = self.resolve_conflict_interactive(conflict)
+                if resolution == 'skip':
+                    print(f"⏭️  Skipping {mcp_def.name}")
+                    return True
+                elif resolution == 'replace':
+                    # Backup and replace
+                    if conflict.existing.config_source == 'claude-desktop':
+                        backup = self.backup_config(self.claude_desktop_config_path)
+                        if backup:
+                            print(f"📦 Backed up Claude Desktop config to {backup}")
+                elif resolution == 'use_existing':
+                    print(f"✓ Using existing {mcp_def.name} installation")
+                    return True
+                # Handle other resolutions...
         
         # Install dependencies first
         if not self.install_dependencies(mcp_def):
@@ -320,40 +783,98 @@ class MCPManager:
         else:
             return "unknown"
     
-    def status(self):
-        """Show status of all MCPs."""
+    def status(self, detailed: bool = False):
+        """Show comprehensive MCP status."""
         enabled_mcps = self.get_enabled_mcps()
+        existing_installations = self.scan_existing_installations()
         
-        if not enabled_mcps:
-            print("No MCPs enabled")
-            return
+        print("🔧 MCP Status Report")
+        print("=" * 50)
         
-        print(f"MCP Status ({len(enabled_mcps)} enabled):")
-        print()
+        if enabled_mcps:
+            print(f"\n📋 Enabled MCPs ({len(enabled_mcps)}):")
+            for mcp_id in enabled_mcps:
+                mcp_def = self.registry.get_mcp(mcp_id)
+                if not mcp_def:
+                    print(f"  ❓ {mcp_id}: Unknown MCP")
+                    continue
+                
+                # Find existing installations
+                existing = [inst for inst in existing_installations if inst.mcp_id == mcp_id]
+                
+                # Test if MCP is working
+                status = self._test_mcp(mcp_def)
+                status_icon = "✅" if status else "❌"
+                
+                print(f"  {status_icon} {mcp_def.name}")
+                if detailed:
+                    print(f"      Category: {mcp_def.category}")
+                    print(f"      Install method: {mcp_def.install_method}")
+                    if mcp_def.description:
+                        print(f"      Description: {mcp_def.description}")
+                
+                # Show existing installations
+                if existing:
+                    print(f"      Existing installations:")
+                    for inst in existing:
+                        working_icon = "🟢" if inst.working else "🔴"
+                        print(f"        {working_icon} {inst.config_source} via {inst.install_method}")
+                        if inst.version:
+                            print(f"          Version: {inst.version}")
+                
+                # Show missing environment variables
+                missing_env = []
+                for env_var in mcp_def.required_env:
+                    if not os.environ.get(env_var):
+                        missing_env.append(env_var)
+                
+                if missing_env:
+                    print(f"      ⚠️  Missing env vars: {', '.join(missing_env)}")
+                
+                print()
         
-        for mcp_id in enabled_mcps:
-            mcp_def = self.registry.get_mcp(mcp_id)
-            if not mcp_def:
-                print(f"✗ {mcp_id}: Unknown MCP")
-                continue
-            
-            # Test if MCP is working
-            status = self._test_mcp(mcp_def)
-            status_icon = "✓" if status else "✗"
-            
-            print(f"{status_icon} {mcp_def.name} ({mcp_def.category})")
-            if mcp_def.description:
-                print(f"    {mcp_def.description}")
-            
-            # Show missing environment variables
-            missing_env = []
-            for env_var in mcp_def.required_env:
-                if not os.environ.get(env_var):
-                    missing_env.append(env_var)
-            
-            if missing_env:
-                print(f"    Missing env vars: {', '.join(missing_env)}")
-            
+        # Show all detected installations
+        other_installations = [inst for inst in existing_installations 
+                             if inst.mcp_id not in enabled_mcps]
+        
+        if other_installations:
+            print(f"\n🔍 Other detected MCP installations ({len(other_installations)}):")
+            for inst in other_installations:
+                working_icon = "🟢" if inst.working else "🔴"
+                print(f"  {working_icon} {inst.name}")
+                print(f"      Source: {inst.config_source}")
+                print(f"      Method: {inst.install_method}")
+                if inst.version:
+                    print(f"      Version: {inst.version}")
+                print()
+        
+        # Detect conflicts
+        conflicts = self.detect_conflicts(enabled_mcps)
+        if conflicts:
+            print(f"\n⚠️  Conflicts detected ({len(conflicts)}):")
+            for conflict in conflicts:
+                print(f"  🚨 {conflict.mcp_id}: {conflict.conflict_type}")
+                print(f"      {conflict.message}")
+                print(f"      Options: {', '.join(conflict.resolution_options)}")
+                print()
+        
+        # Show backup files
+        backups = []
+        backup_paths = [
+            self.claude_desktop_config_path, 
+            self.claude_code_config_path,
+            self.gemini_global_config_path,
+            self.gemini_project_config_path
+        ]
+        for config_path in backup_paths:
+            backups.extend(self.list_backups(config_path))
+        
+        if backups and detailed:
+            print(f"\n💾 Available backups ({len(backups)}):")
+            for backup in sorted(backups, reverse=True)[:5]:  # Show latest 5
+                print(f"  📦 {backup.name}")
+            if len(backups) > 5:
+                print(f"      ... and {len(backups) - 5} more")
             print()
     
     def _test_mcp(self, mcp_def: MCPDefinition) -> bool:
